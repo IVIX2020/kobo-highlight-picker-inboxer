@@ -241,51 +241,76 @@ export class ExtractHighlightsModal extends Modal {
     const highlightsToDisplay: { bookTitle: string, bookmark: Bookmark, titleInput: HTMLInputElement, checkbox: HTMLInputElement }[] = [];
 
     for (const bookTitle of Array.from(this.selectedBooks)) {
-        // その本の全ハイライトを取得
-        const bookmarks = await service.getHighlightsForBook(bookTitle); // 既存メソッド
-        
-        const bookHeader = scrollArea.createEl("h3", { text: bookTitle });
-        bookHeader.style.borderBottom = "1px solid var(--text-muted)";
+			// --- 修正箇所: 直接SQLを実行して、その本のハイライトを安全に取得 ---
+			const highlightQuery = `
+				SELECT 
+					bookmark.Text as text, 
+					bookmark.Annotation as annotation, 
+					bookmark.ChapterProgress as chapterProgress
+				FROM bookmark
+				JOIN content ON bookmark.VolumeID = content.ContentID
+				WHERE content.Title = '${bookTitle.replace(/'/g, "''")}'
+				AND bookmark.Text IS NOT NULL
+				ORDER BY bookmark.ChapterProgress ASC
+			`;
+			
+			const res = db.exec(highlightQuery);
+			const bookmarks: any[] = [];
+			
+			if (res.length > 0 && res[0].values) {
+					res[0].values.forEach(row => {
+							bookmarks.push({
+									text: row[0],
+									annotation: row[1],
+									chapterProgress: row[2]
+							});
+					});
+			}
 
-        bookmarks.forEach((bm) => {
-            const card = scrollArea.createDiv({ cls: "kobo-highlight-card" });
-            card.style.backgroundColor = "var(--background-primary)";
-            card.style.margin = "10px 0";
-            card.style.padding = "10px";
-            card.style.borderRadius = "8px";
-            card.style.border = "1px solid var(--background-modifier-border)";
+			// --- UIの構築 ---
+			const bookHeader = scrollArea.createEl("h3", { text: bookTitle });
+			bookHeader.style.borderBottom = "1px solid var(--text-muted)";
+			bookHeader.style.marginTop = "20px";
 
-            // 1. 取り込みチェックボックス
-            const topRow = card.createDiv();
-            topRow.style.display = "flex";
-            topRow.style.justifyContent = "space-between";
-            topRow.style.alignItems = "center";
+			bookmarks.forEach((bm) => {
+					const card = scrollArea.createDiv({ cls: "kobo-highlight-card" });
+					card.style.backgroundColor = "var(--background-primary)";
+					card.style.margin = "10px 0";
+					card.style.padding = "10px";
+					card.style.borderRadius = "8px";
+					card.style.border = "1px solid var(--background-modifier-border)";
 
-            const checkbox = topRow.createEl("input", { type: "checkbox" });
-            checkbox.checked = true; // デフォルトはON
+					// 1. 上段エリア（チェックボックスとタイトル入力）
+					const topRow = card.createDiv();
+					topRow.style.display = "flex";
+					topRow.style.justifyContent = "space-between";
+					topRow.style.alignItems = "center";
 
-            // 2. タイトル入力欄
-            const titleInput = topRow.createEl("input", { type: "text" });
-            titleInput.placeholder = "ノートのタイトルを入力 (空欄なら本文冒頭)";
-            titleInput.style.flexGrow = "1";
-            titleInput.style.margin = "0 10px";
+					const checkbox = topRow.createEl("input", { type: "checkbox" });
+					checkbox.checked = true;
 
-            // 3. ハイライト本文のプレビュー（引用形式）
-            const quote = card.createEl("blockquote", { text: bm.Text });
-            quote.style.fontSize = "0.9em";
-            quote.style.margin = "10px 0 0 0";
-            quote.style.color = "var(--text-normal)";
+					const titleInput = topRow.createEl("input", { type: "text" });
+					titleInput.placeholder = "ノートのタイトルを入力 (空欄なら本文冒頭)";
+					titleInput.style.flexGrow = "1";
+					titleInput.style.margin = "0 10px";
 
-            // メモがあれば表示
-            if (bm.Annotation) {
-                const note = card.createEl("p", { text: `📝: ${bm.Annotation}` });
-                note.style.fontSize = "0.8em";
-                note.style.color = "var(--text-accent)";
-            }
+					// 2. ハイライト本文のプレビュー（小文字の .text に修正）
+					const quote = card.createEl("blockquote", { text: bm.text });
+					quote.style.fontSize = "0.9em";
+					quote.style.margin = "10px 0 0 0";
+					quote.style.color = "var(--text-normal)";
 
-            highlightsToDisplay.push({ bookTitle, bookmark: bm, titleInput, checkbox });
-        });
-    }
+					// 3. メモがあれば表示（小文字の .annotation に修正）
+					if (bm.annotation) {
+							const note = card.createEl("p", { text: `📝: ${bm.annotation}` });
+							note.style.fontSize = "0.8em";
+							note.style.color = "var(--text-accent)";
+							note.style.marginTop = "5px";
+					}
+
+					highlightsToDisplay.push({ bookTitle, bookmark: bm, titleInput, checkbox });
+			});
+	}
 
     // --- 保存ボタン ---
     const bottomActionRow = contentEl.createDiv();
@@ -339,51 +364,76 @@ export class ExtractHighlightsModal extends Modal {
     const highlightsToDisplay: { bookTitle: string, bookmark: Bookmark, titleInput: HTMLInputElement, checkbox: HTMLInputElement }[] = [];
 
     for (const bookTitle of Array.from(this.selectedBooks)) {
-        // その本の全ハイライトを取得
-        const bookmarks = await service.getHighlightsForBook(bookTitle); // 既存メソッド
-        
-        const bookHeader = scrollArea.createEl("h3", { text: bookTitle });
-        bookHeader.style.borderBottom = "1px solid var(--text-muted)";
+			// --- 修正箇所: 直接SQLを実行して、その本のハイライトを安全に取得 ---
+			const highlightQuery = `
+				SELECT 
+					bookmark.Text as text, 
+					bookmark.Annotation as annotation, 
+					bookmark.ChapterProgress as chapterProgress
+				FROM bookmark
+				JOIN content ON bookmark.VolumeID = content.ContentID
+				WHERE content.Title = '${bookTitle.replace(/'/g, "''")}'
+				AND bookmark.Text IS NOT NULL
+				ORDER BY bookmark.ChapterProgress ASC
+			`;
+			
+			const res = db.exec(highlightQuery);
+			const bookmarks: any[] = [];
+			
+			if (res.length > 0 && res[0].values) {
+					res[0].values.forEach(row => {
+							bookmarks.push({
+									text: row[0],
+									annotation: row[1],
+									chapterProgress: row[2]
+							});
+					});
+			}
 
-        bookmarks.forEach((bm) => {
-            const card = scrollArea.createDiv({ cls: "kobo-highlight-card" });
-            card.style.backgroundColor = "var(--background-primary)";
-            card.style.margin = "10px 0";
-            card.style.padding = "10px";
-            card.style.borderRadius = "8px";
-            card.style.border = "1px solid var(--background-modifier-border)";
+			// --- UIの構築 ---
+			const bookHeader = scrollArea.createEl("h3", { text: bookTitle });
+			bookHeader.style.borderBottom = "1px solid var(--text-muted)";
+			bookHeader.style.marginTop = "20px";
 
-            // 1. 取り込みチェックボックス
-            const topRow = card.createDiv();
-            topRow.style.display = "flex";
-            topRow.style.justifyContent = "space-between";
-            topRow.style.alignItems = "center";
+			bookmarks.forEach((bm) => {
+					const card = scrollArea.createDiv({ cls: "kobo-highlight-card" });
+					card.style.backgroundColor = "var(--background-primary)";
+					card.style.margin = "10px 0";
+					card.style.padding = "10px";
+					card.style.borderRadius = "8px";
+					card.style.border = "1px solid var(--background-modifier-border)";
 
-            const checkbox = topRow.createEl("input", { type: "checkbox" });
-            checkbox.checked = true; // デフォルトはON
+					// 1. 上段エリア（チェックボックスとタイトル入力）
+					const topRow = card.createDiv();
+					topRow.style.display = "flex";
+					topRow.style.justifyContent = "space-between";
+					topRow.style.alignItems = "center";
 
-            // 2. タイトル入力欄
-            const titleInput = topRow.createEl("input", { type: "text" });
-            titleInput.placeholder = "ノートのタイトルを入力 (空欄なら本文冒頭)";
-            titleInput.style.flexGrow = "1";
-            titleInput.style.margin = "0 10px";
+					const checkbox = topRow.createEl("input", { type: "checkbox" });
+					checkbox.checked = true;
 
-            // 3. ハイライト本文のプレビュー（引用形式）
-            const quote = card.createEl("blockquote", { text: bm.Text });
-            quote.style.fontSize = "0.9em";
-            quote.style.margin = "10px 0 0 0";
-            quote.style.color = "var(--text-normal)";
+					const titleInput = topRow.createEl("input", { type: "text" });
+					titleInput.placeholder = "ノートのタイトルを入力 (空欄なら本文冒頭)";
+					titleInput.style.flexGrow = "1";
+					titleInput.style.margin = "0 10px";
 
-            // メモがあれば表示
-            if (bm.Annotation) {
-                const note = card.createEl("p", { text: `📝: ${bm.Annotation}` });
-                note.style.fontSize = "0.8em";
-                note.style.color = "var(--text-accent)";
-            }
+					// 2. ハイライト本文のプレビュー（小文字の .text に修正）
+					const quote = card.createEl("blockquote", { text: bm.text });
+					quote.style.fontSize = "0.9em";
+					quote.style.margin = "10px 0 0 0";
+					quote.style.color = "var(--text-normal)";
 
-            highlightsToDisplay.push({ bookTitle, bookmark: bm, titleInput, checkbox });
-        });
-    }
+					// 3. メモがあれば表示（小文字の .annotation に修正）
+					if (bm.annotation) {
+							const note = card.createEl("p", { text: `📝: ${bm.annotation}` });
+							note.style.fontSize = "0.8em";
+							note.style.color = "var(--text-accent)";
+							note.style.marginTop = "5px";
+					}
+
+					highlightsToDisplay.push({ bookTitle, bookmark: bm, titleInput, checkbox });
+			});
+	}
 
     // --- 保存ボタン ---
     const bottomActionRow = contentEl.createDiv();
