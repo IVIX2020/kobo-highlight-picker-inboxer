@@ -134,12 +134,22 @@ export class ExtractHighlightsModal extends Modal {
 			reader.readAsArrayBuffer(file);
 		});
 
-		this.goButtonEl.addEventListener("click", () => {
-			// ここで次のステップ（チェックした本の中身を表示する）へ移行
-			console.log("Selected Books:", Array.from(this.selectedBooks));
-			// 次のUI：ハイライト選択モーダル または 表示の切り替え
-			this.renderHighlightSelector(); 
-		});
+		this.goButtonEl.addEventListener("click", async () => {
+      if (this.selectedBooks.size === 0) return;
+      
+      const SQLEngine = await SqlJs({ wasmBinary: binary.buffer });
+      const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer!));
+      const service = new HighlightService(new Repository(db));
+
+      new Notice("Syncing to intermediate notes...");
+
+      for (const bookTitle of Array.from(this.selectedBooks)) {
+        await this.syncToIntermediateNote(bookTitle, service, db);
+      }
+
+      db.close();
+      this.close();
+    });
 	}
 
 	// ★ 新しく追加：次のステップの画面を描画するメソッド
@@ -217,6 +227,97 @@ export class ExtractHighlightsModal extends Modal {
 		new Notice(`${bookTitles.length} books with highlights found.`);
 		db.close(); // メモリ解放
 	}
+
+	// --- 中継ノートの生成または更新を行うメイン関数 ---
+  private async syncToIntermediateNote(bookTitle: string, service: HighlightService, db: any) {
+		const sanitizedBookName = sanitize(bookTitle);
+		const folderPath = "Kobo-Inboxes";
+		const fileName = normalizePath(`${folderPath}/${sanitizedBookName}.md`);
+		
+		if (!(await this.app.vault.adapter.exists(folderPath))) {
+			await this.app.vault.createFolder(folderPath);
+		}
+	
+		const highlightQuery = `
+			SELECT b.BookmarkID, b.Text, b.Annotation
+			FROM bookmark b
+			INNER JOIN content c ON b.VolumeID = c.ContentID
+			WHERE c.Title = '${bookTitle.replace(/'/g, "''")}'
+			AND b.Text IS NOT NULL
+		`;
+		
+		const res = db.exec(highlightQuery);
+		if (!res || res.length === 0 || !res[0].values) {
+			console.log(`No highlights found for ${bookTitle}`);
+			return;
+		}
+	
+		// 1. 既存ファイルの内容を取得。なければヘッダーのみ作成
+		let existingContent = "";
+		const fileExists = await this.app.vault.adapter.exists(fileName);
+		if (fileExists) {
+			existingContent = await this.app.vault.adapter.read(fileName);
+		} else {
+			existingContent = this.createNoteHeader(bookTitle);
+		}
+	
+		// 2. 新規分だけを組み立てる
+		let newHighlightsText = "";
+		let addedCount = 0;
+	
+		for (const row of res[0].values) {
+			const id = row[0] as string;
+			const rawText = row[1] as string;
+			// コールアウト形式に変換
+			const calloutText = rawText.trim().split('\n').map(line => `> ${line}`).join('\n');
+			const annotation = row[2] as string || "";
+	
+			if (!existingContent.includes(`id: ${id}`)) {
+				let block = `\n---\n> [!quote]\n${calloutText}\n> \n\n`;
+				
+				// Kobo側でメモ（Annotation）があれば、考察欄の初期値として入れる
+				if (annotation) {
+					block += `📝: ${annotation}\n\n`;
+				}
+				
+				// 知見ノート化のための入力行
+				block += `- [ ] _ \n`;
+				
+				newHighlightsText += block;
+				addedCount++;
+			}
+		}
+	
+		// 3. 書き込み処理
+		if (addedCount > 0) {
+			// 既存の内容の末尾に、新しいハイライトを合体させる
+			const updatedContent = existingContent.trimEnd() + "\n\n" + newHighlightsText.trim();
+			await this.app.vault.adapter.write(fileName, updatedContent);
+			new Notice(`${bookTitle}: ${addedCount}件追加完了`);
+		} else {
+			// 初回作成時のみ、中身がなくてもヘッダーだけ書く
+			if (!fileExists) {
+				await this.app.vault.adapter.write(fileName, existingContent);
+				new Notice(`${bookTitle}: 中継ノートを作成しました（新着なし）`);
+			} else {
+				new Notice(`${bookTitle}: すべて同期済みです`);
+			}
+		}
+	}
+
+  // 中継ノートの冒頭部分（ボタンを含む）を作成
+  private createNoteHeader(title: string): string {
+		return `---
+title: "${title}"
+sync_date: ${new Date().toISOString()}
+---
+
+\`\`\`kobo-inboxer
+\`\`\`
+
+# ${title}
+`;
+}
 
 	private async renderHighlightSelector() {
     const { contentEl } = this;
