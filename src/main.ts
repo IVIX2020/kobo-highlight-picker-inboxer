@@ -18,9 +18,9 @@ export default class KoboHighlightsImporter extends Plugin {
 		// This creates an icon in the left ribbon.
 		const KoboHighlightsImporterIconEl = this.addRibbonIcon(
 			"e-reader",
-			"Import from Kobo",
+			"Kobo Highlight Picker", // ツールチップを変更
 			() => {
-				// Called when the user clicks the icon.
+				// ここで開くモーダルが、あなたの「選択画面」の入り口になります
 				new ExtractHighlightsModal(this.app, this.settings).open();
 			},
 		);

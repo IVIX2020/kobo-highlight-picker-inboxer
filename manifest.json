@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-kobo-highlights-importer-plugin",
-	"name": "Kobo Highlights Importer",
+	"id": "kobo-highlight-picker-inboxer",
+	"name": "Kobo Highlight Picker & Inboxer",
 	"version": "4.1.0",
 	"minAppVersion": "0.15.9",
-	"description": "Import highlights from your Kobo device",
-	"author": "Kevin Hellemun",
-	"authorUrl": "https://github.com/OGKevin",
+	"description": "Pick and invox highlights from your Kobo device",
+	"author": "IVIX2020",
+	"authorUrl": "https://github.com/IVIX2020",
 	"isDesktopOnly": true
 }
