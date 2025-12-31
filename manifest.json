@@ -1,10 +1,10 @@
 {
-	"id": "kobo-highlight-picker-inboxer",
-	"name": "Kobo Highlight Picker & Inboxer",
-	"version": "4.1.0",
-	"minAppVersion": "0.15.9",
-	"description": "Pick and invox highlights from your Kobo device",
-	"author": "IVIX2020",
-	"authorUrl": "https://github.com/IVIX2020",
-	"isDesktopOnly": true
+  "id": "kobo-highlights-picker-inboxer",
+  "name": "Kobo Highlights Picker & Inboxer",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Selectively import Kobo highlights into intermediate inbox notes and turn them into insight notes.",
+  "author": "IVIX2020",
+  "authorUrl": "https://github.com/IVIX2020",
+  "isDesktopOnly": true
 }
