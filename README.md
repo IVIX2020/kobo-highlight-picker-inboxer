@@ -10,8 +10,6 @@ This plugin is built for people who want to *think with their highlights*, not s
 
 This plugin turns the typical bulk-import process into a deliberate, multi-stage workflow. Instead of creating hundreds of notes at once, you get a reviewable inbox that respects your attention, time, and cognitive load.
 
-![[README_assets/workflow-diagram.md]]
-
 ---
 
 ## ⚙️ How It Works: A Step-by-Step Guide
