@@ -1,8 +1,8 @@
-# Obsidian Kobo Highlight Importer
+# Kobo Highlight Picker & Inboxer
 
 This plugin aims to make highlight import from Kobo devices easier.
 
-- [Obsidian Kobo Highlight Importer](#obsidian-kobo-highlight-importer)
+- [Kobo Highlight Picker & Inboxer](#kobo-highlight-picker--inboxer)
     - [How to use](#how-to-use)
     - [Templating](#templating)
         - [Variables](#variables)

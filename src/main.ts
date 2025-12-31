@@ -6,7 +6,30 @@ import {
   KoboHighlightsImporterSettingsTab,
 } from "./settings/Settings";
 
-const EREADER_ICON_PATH = `<path stroke="currentColor" fill="currentColor" d="..."/>`;
+const INBOX_ICON_PATH = `
+<svg viewBox="0 0 24 24">
+  <path
+    d="M12 4v9"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+  <path
+    d="M8 9l4 4 4-4"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M5 18h14"
+    stroke="currentColor"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+</svg>
+`;
+
 
 // ファイル名に使えない文字を潰す（Obsidian/OS両対応のためシンプルに）
 function sanitizeFileName(name: string): string {
@@ -20,64 +43,15 @@ function sanitizeFileName(name: string): string {
 export default class KoboHighlightsImporter extends Plugin {
   settings!: KoboHighlightsImporterSettings;
 
-	/*
-  async onload() {
-    addIcon("e-reader", EREADER_ICON_PATH);
-    await this.loadSettings();
-
-    const iconEl = this.addRibbonIcon("e-reader", "Kobo Highlight Picker", () => {
-      new ExtractHighlightsModal(this.app, this.settings).open();
-    });
-    iconEl.addClass("kobo-highlights-importer-icon");
-
-    this.addCommand({
-      id: "import-from-kobo-sqlite",
-      name: "Import from Kobo",
-      callback: () => new ExtractHighlightsModal(this.app, this.settings).open(),
-    });
-
-    this.addCommand({
-      id: "extract-highlights",
-      name: "Extract checked highlights to Inbox",
-      checkCallback: (checking: boolean) => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile && activeFile.extension === "md") {
-          if (!checking) this.extractHighlightsToNotes(activeFile);
-          return true;
-        }
-        return false;
-      },
-    });
-
-		this.registerMarkdownCodeBlockProcessor("kobo-inboxer", (source, el, ctx) => {
-			const btn = el.createEl("button", { 
-				text: "⚡️ 知見ノート化を実行",
-				cls: "kobo-inbox-btn" 
-			});
-		
-			btn.addEventListener("click", async () => {
-				// ボタンが存在するノート自体のパスを取得
-				const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
-				if (file instanceof TFile) {
-					await this.extractHighlightsToNotes(file);
-				} else {
-					new Notice("ファイルの特定に失敗しました");
-				}
-			});
-		});
-
-    this.addSettingTab(new KoboHighlightsImporterSettingsTab(this.app, this));
-  }
-	*/
 	async onload() {
-    addIcon("e-reader", EREADER_ICON_PATH);
+    addIcon("inbox", INBOX_ICON_PATH);
     await this.loadSettings();
 
     // 1. リボンアイコン（最初に登録）
-    const iconEl = this.addRibbonIcon("e-reader", "Kobo Highlight Picker", () => {
+    const iconEl = this.addRibbonIcon("inbox", "Kobo Highlight Picker", () => {
       new ExtractHighlightsModal(this.app, this.settings).open();
     });
-    iconEl.addClass("kobo-highlights-importer-icon");
+    iconEl.addClass("kobo-highlight-picker-inboxer-icon");
 
     // 2. インポートコマンド
     this.addCommand({
@@ -162,7 +136,7 @@ export default class KoboHighlightsImporter extends Plugin {
         await this.createNewInsightNote(target.title, result.quoteContent, file.basename, result.bookmarkId);
         
         newLines[target.index] = "- [[" + target.title + "]]";
-        newLines.splice(target.index + 1, 0, "- [ ] _ ");
+        newLines.splice(target.index + 1, 0, "- [ ] ");
         
         createdCount++;
       }
@@ -243,6 +217,4 @@ ${quoteBody}
       new Notice(`エラー: 同名のファイルが既に存在する可能性があります (${title})`);
     }
   }
-
-
 }
