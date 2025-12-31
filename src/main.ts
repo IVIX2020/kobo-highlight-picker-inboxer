@@ -2,8 +2,8 @@ import { addIcon, Notice, normalizePath, Plugin, TFile } from "obsidian";
 import { ExtractHighlightsModal } from "./modal/ExtractHighlightsModal";
 import {
   DEFAULT_SETTINGS,
-  KoboHighlightsImporterSettings,
-  KoboHighlightsImporterSettingsTab,
+  KoboHighlightsPickerAndInboxerSettings,
+  KoboHighlightsPickerAndInboxerSettingsTab,
 } from "./settings/Settings";
 
 const INBOX_ICON_PATH = `
@@ -41,11 +41,24 @@ function sanitizeFileName(name: string): string {
 }
 
 export default class KoboHighlightsImporter extends Plugin {
-  settings!: KoboHighlightsImporterSettings;
+  settings!: KoboHighlightsPickerAndInboxerSettings;
+
+  // Intermediate notes created by the modal are stored here.
+  //private readonly INTERMEDIATE_FOLDER = this.settings.intermediateFolder;
+  // Insight notes created from checked memos are stored here.
+  //private readonly INSIGHT_FOLDER = this.settings.insightFolder;
+
+  // Marker used in intermediate notes to record an extracted insight.
+  // We count only these lines to compute "insights_created".
+  private readonly INSIGHT_LINK_PREFIX = "insight::";
 
 	async onload() {
     addIcon("inbox", INBOX_ICON_PATH);
     await this.loadSettings();
+
+		// const INTERMEDIATE_FOLDER = this.settings.intermediateFolder;
+		// Insight notes created from checked memos are stored here.
+		// const INSIGHT_FOLDER = this.settings.insightFolder;
 
     // 1. リボンアイコン（最初に登録）
     const iconEl = this.addRibbonIcon("inbox", "Kobo Highlight Picker", () => {
@@ -89,7 +102,7 @@ export default class KoboHighlightsImporter extends Plugin {
       });
     });
 
-    this.addSettingTab(new KoboHighlightsImporterSettingsTab(this.app, this));
+    this.addSettingTab(new KoboHighlightsPickerAndInboxerSettingsTab(this.app, this));
   }
 
   async loadSettings() {
@@ -133,17 +146,67 @@ export default class KoboHighlightsImporter extends Plugin {
       const result = this.collectQuoteBlockUpwards(lines, target.index);
 
       if (result.quoteContent.trim().length > 0) {
-        await this.createNewInsightNote(target.title, result.quoteContent, file.basename, result.bookmarkId);
-        
-        newLines[target.index] = "- [[" + target.title + "]]";
-        newLines.splice(target.index + 1, 0, "- [ ] ");
+        // 1) create an insight note
+        const createdPath = await this.createNewInsightNote(
+          target.title,
+          result.quoteContent,
+          file.basename,
+          result.bookmarkId,
+        );
+
+        newLines[target.index] = `- [ ] memo:: `;
+
+        // 3) add a dedicated marker line that we can reliably count later
+        //    (don't count generic [[links]]; only this prefix is considered)
+        if (createdPath) {
+          const linkTarget = createdPath.replace(/\.md$/i, "");
+          newLines.splice(target.index + 1, 0, `- ${this.INSIGHT_LINK_PREFIX} [[${linkTarget}]]`);
+        }
         
         createdCount++;
       }
     }
 
     await this.app.vault.modify(file, newLines.join("\n"));
+    await this.updateIntermediateNoteStats(file);
     new Notice(createdCount + " 件の知見ノートを作成しました");
+  }
+
+  /**
+   * Recompute and store stats for an intermediate note.
+   * Source of truth is the note body; frontmatter is just a cache for fast UI.
+   */
+  private async updateIntermediateNoteStats(file: TFile): Promise<void> {
+    try {
+      const text = await this.app.vault.read(file);
+      const stats = this.computeIntermediateStats(text);
+      await this.app.fileManager.processFrontMatter(file, (fm) => {
+        // keep existing title/sync_date
+        const kobo = (fm.kobo_stats ??= {});
+        kobo.highlights_total = stats.highlights_total;
+        kobo.insights_created = stats.insights_created;
+        kobo.updated_at = new Date().toISOString();
+      });
+    } catch (e) {
+      // Stats are a convenience; do not break extraction if something goes wrong.
+      console.warn("Failed to update kobo_stats:", e);
+    }
+  }
+
+  private computeIntermediateStats(text: string): {
+    highlights_total: number;
+    insights_created: number;
+  } {
+    const highlights_total = (text.match(/^> \[!quote\]/gm) ?? []).length;
+
+    // Only count lines that start with our dedicated marker.
+    const insights_created = (text.match(new RegExp(`^\\s*-\\s*${this.escapeForRegex(this.INSIGHT_LINK_PREFIX)}\\s*\\[\\[.+?\\]\\]`, "gm")) ?? []).length;
+
+    return { highlights_total, insights_created };
+  }
+
+  private escapeForRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   private collectQuoteBlockUpwards(lines: string[], fromIndex: number) {
@@ -181,9 +244,18 @@ export default class KoboHighlightsImporter extends Plugin {
   }
 
   // ✅ bookmarkId をメタに入れたいなら使う（不要なら引数ごと消してOK）
-  async createNewInsightNote(title: string, quote: string, bookTitle: string, bookmarkId?: string) {
-    const folder = "Inbox";
-    const safe = sanitizeFileName(title);
+  async createNewInsightNote(title: string, quote: string, bookTitle: string, bookmarkId?: string): Promise<string | null> {
+		const normalizedTitle = (title ?? "")
+    .replace(/^\s*memo::\s*/i, "")  // strip "memo::" if it appears at the start
+    .trim();
+
+		// ② 空なら「作らない」
+		if (!normalizedTitle) {
+			return null;
+		}
+
+    const folder = this.settings.insightFolder;
+    const safe = sanitizeFileName(normalizedTitle);
     const path = normalizePath(`${folder}/${safe}.md`);
 
     if (!(await this.app.vault.adapter.exists(folder))) {
@@ -200,7 +272,7 @@ export default class KoboHighlightsImporter extends Plugin {
       .join("\n");
 
     const fileContent = `---
-title: "${title.replace(/"/g, '\\"')}"
+title: "${normalizedTitle.replace(/"/g, '\\"')}"
 book: "[[${bookTitle}]]"
 ${metaBookmark}created: ${created}
 ---
@@ -213,8 +285,38 @@ ${quoteBody}
 
     try {
       await this.app.vault.create(path, fileContent);
+      return path;
     } catch (e) {
       new Notice(`エラー: 同名のファイルが既に存在する可能性があります (${title})`);
+      return path; // still return path so the link can be added (user might already have it)
     }
   }
+}
+
+
+
+// ===== Kobo Stats Helpers (FINAL) =====
+export function computeKoboStatsFromBody(body: string) {
+  const highlights_total =
+    (body.match(/^> \[!quote\]/gm) || []).length;
+
+
+
+  const insights_created =
+    (body.match(/^\s*-\s*insight::\s*\[\[.+?\]\]/gm) || []).length;
+
+  return { highlights_total, insights_created };
+}
+
+// Replace memo:: with insight:: inside a highlight block
+export function replaceMemoWithInsight(
+  blockText: string,
+  insightLink: string
+): string {
+  const withoutMemo = blockText.replace(
+    /^\s*-\s*\[[ xX]\]\s*memo::.*$/gm,
+    ""
+  );
+
+  return withoutMemo.trimEnd() + `\n\n- insight:: [[${insightLink}]]\n`;
 }

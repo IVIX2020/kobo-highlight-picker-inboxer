@@ -1,11 +1,11 @@
-import { App, Modal, normalizePath, Notice } from "obsidian";
+import { App, Modal, normalizePath, Notice, TFile } from "obsidian";
 import { sanitize } from "sanitize-filename-ts";
 import SqlJs from "sql.js";
 import { binary } from "src/binaries/sql-wasm";
 import { HighlightService } from "src/database/Highlight";
 import { Bookmark } from "src/database/interfaces";
 import { Repository } from "src/database/repository";
-import { KoboHighlightsImporterSettings } from "src/settings/Settings";
+import { KoboHighlightsPickerAndInboxerSettings } from "src/settings/Settings";
 import { applyTemplateTransformations } from "src/template/template";
 import { getTemplateContents } from "src/template/templateContents";
 
@@ -13,7 +13,7 @@ export class ExtractHighlightsModal extends Modal {
 	goButtonEl!: HTMLButtonElement;
 	inputFileEl!: HTMLInputElement;
 
-	settings: KoboHighlightsImporterSettings;
+	settings: KoboHighlightsPickerAndInboxerSettings;
 
 	fileBuffer: ArrayBuffer | null | undefined;
 
@@ -22,7 +22,21 @@ export class ExtractHighlightsModal extends Modal {
 	bookListContainerEl!: HTMLDivElement; // リスト表示用
   selectedBooks: Set<string> = new Set(); // チェックされた本のタイトルを保持
 
-	constructor(app: App, settings: KoboHighlightsImporterSettings) {
+	private get intermediateFolder(): string {
+		return this.settings?.intermediateFolder || "Kobo-Inboxes";
+	}
+	
+	/*
+	private get insightFolder(): string {
+		return this.settings?.insightFolder || "Kobo-Insights";
+	}
+	*/
+	
+
+  // Marker line used in intermediate notes to record an extracted insight.
+  private readonly INSIGHT_LINK_PREFIX = "insight::";
+
+	constructor(app: App, settings: KoboHighlightsPickerAndInboxerSettings) {
 		super(app);
 		this.settings = settings;
 		this.nrOfBooksExtracted = 0;
@@ -84,7 +98,7 @@ export class ExtractHighlightsModal extends Modal {
 		for (const [bookTitle, chapters] of content) {
 			const sanitizedBookName = sanitize(bookTitle);
 			const fileName = normalizePath(
-				`${this.settings.storageFolder}/${sanitizedBookName}.md`,
+				`${this.intermediateFolder}/${sanitizedBookName}.md`,
 			);
 
 			const details =
@@ -178,10 +192,10 @@ export class ExtractHighlightsModal extends Modal {
 
 	private async refreshBookList() {
 		if (!this.fileBuffer) return;
-	
+
 		this.bookListContainerEl.empty();
 		this.bookListContainerEl.createEl("h3", { text: "Select Books to Import" });
-	
+
 		const SQLEngine = await SqlJs({ wasmBinary: binary.buffer });
 		const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer));
 		
@@ -198,40 +212,154 @@ export class ExtractHighlightsModal extends Modal {
 		
 		if (results.length === 0 || !results[0].values) {
 			this.bookListContainerEl.createEl("p", { text: "No books with highlights found." });
+			db.close();
 			return;
 		}
-	
+		
 		const bookTitles = results[0].values.map(v => v[0] as string);
-	
-		// リスト表示
-		bookTitles.forEach((bookTitle) => {
-			const bookRow = this.bookListContainerEl.createDiv({ cls: "kobo-book-row" });
-			bookRow.style.display = "flex";
-			bookRow.style.alignItems = "center";
-			bookRow.style.margin = "5px 0";
-	
-			const checkbox = bookRow.createEl("input", { type: "checkbox" });
-			const label = bookRow.createEl("label", { text: bookTitle });
-			label.style.marginLeft = "10px";
-	
-			checkbox.addEventListener("change", () => {
-				if (checkbox.checked) {
-					this.selectedBooks.add(bookTitle);
-				} else {
-					this.selectedBooks.delete(bookTitle);
-				}
-				this.goButtonEl.disabled = this.selectedBooks.size === 0;
-			});
+
+		// --- 既存の中継ノート有無で振り分け ---
+		const folderPath = this.intermediateFolder;
+		const statusList = await Promise.all(
+			bookTitles.map(async (bookTitle) => {
+				const sanitizedBookName = sanitize(bookTitle);
+				const fileName = normalizePath(`${folderPath}/${sanitizedBookName}.md`);
+				const exists = await this.app.vault.adapter.exists(fileName);
+				return { bookTitle, exists, fileName };
+			})
+		);
+
+		const already = statusList.filter(x => x.exists).map(x => x.bookTitle);
+		const newOnes = statusList.filter(x => !x.exists).map(x => x.bookTitle);
+
+		// UI: 便利ボタン
+		const actionRow = this.bookListContainerEl.createDiv({ cls: "kobo-book-actions" });
+		actionRow.style.display = "flex";
+		actionRow.style.gap = "8px";
+		actionRow.style.margin = "10px 0";
+
+		const selectNewBtn = actionRow.createEl("button", { text: "Select all NEW" });
+		selectNewBtn.addEventListener("click", () => {
+			this.selectedBooks = new Set(newOnes);
+			this.goButtonEl.disabled = this.selectedBooks.size === 0;
+			this.refreshBookList();
 		});
-	
-		new Notice(`${bookTitles.length} books with highlights found.`);
+
+		const clearBtn = actionRow.createEl("button", { text: "Clear selection" });
+		clearBtn.addEventListener("click", () => {
+			this.selectedBooks.clear();
+			this.goButtonEl.disabled = true;
+			this.refreshBookList();
+		});
+
+		const renderSection = (title: string, items: string[], badgeText: string) => {
+			const section = this.bookListContainerEl.createDiv({ cls: "kobo-book-section" });
+			section.createEl("h4", { text: `${title} (${items.length})` });
+
+			items.forEach((bookTitle) => {
+				const sanitizedBookName = sanitize(bookTitle);
+				const fileName = normalizePath(`${folderPath}/${sanitizedBookName}.md`);
+				const stats = this.readCachedStats(fileName);
+				const badgeTextWithStats = stats
+					? `${badgeText}  H:${stats.highlights_total}  I:${stats.insights_created}`
+					: badgeText;
+
+				const bookRow = section.createDiv({ cls: "kobo-book-row" });
+				bookRow.style.display = "flex";
+				bookRow.style.alignItems = "center";
+				bookRow.style.margin = "5px 0";
+
+				const checkbox = bookRow.createEl("input", { type: "checkbox" });
+				checkbox.checked = this.selectedBooks.has(bookTitle);
+
+				const label = bookRow.createEl("label", { text: bookTitle });
+				label.style.marginLeft = "10px";
+				label.style.flexGrow = "1";
+
+				const badge = bookRow.createEl("span", { text: badgeTextWithStats });
+				badge.style.fontSize = "0.75em";
+				badge.style.opacity = "0.75";
+				badge.style.marginLeft = "8px";
+
+				checkbox.addEventListener("change", () => {
+					if (checkbox.checked) {
+						this.selectedBooks.add(bookTitle);
+					} else {
+						this.selectedBooks.delete(bookTitle);
+					}
+					this.goButtonEl.disabled = this.selectedBooks.size === 0;
+				});
+			});
+		};
+
+		renderSection("NEW (no intermediate note yet)", newOnes, "NEW");
+		renderSection("ALREADY HAS intermediate note", already, "SYNCED");
+
+		new Notice(`${bookTitles.length} books with highlights found. NEW:${newOnes.length} / SYNCED:${already.length}`);
 		db.close(); // メモリ解放
+	}
+
+	/**
+	 * Read cached stats from frontmatter if available.
+	 * Returns null if the file doesn't exist or stats are missing/not yet cached.
+	 */
+	private readCachedStats(filePath: string): {
+		highlights_total: number;
+		insights_created: number;
+	} | null {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return null;
+		const cache = this.app.metadataCache.getFileCache(f);
+		const fm: any = cache?.frontmatter;
+		const ks: any = fm?.kobo_stats;
+		if (!ks) return null;
+		const h = Number(ks.highlights_total);
+		const i = Number(ks.insights_created);
+		if ([h, i].some((n) => Number.isNaN(n))) return null;
+		return { highlights_total: h, insights_created: i };
+	}
+
+	/**
+	 * Recompute stats from the note body and store them into frontmatter (cache).
+	 * Source of truth is the body; frontmatter is only for fast listing.
+	 */
+	private async recomputeAndCacheStats(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		const text = await this.app.vault.read(f);
+		const stats = this.computeIntermediateStats(text);
+		await this.app.fileManager.processFrontMatter(f, (fm) => {
+			const kobo = (fm.kobo_stats ??= {});
+			kobo.highlights_total = stats.highlights_total;
+			kobo.insights_created = stats.insights_created;
+			kobo.updated_at = new Date().toISOString();
+		});
+	}
+
+	private computeIntermediateStats(text: string): {
+		highlights_total: number;
+		insights_created: number;
+	} {
+		const highlights_total = (text.match(/^> \[!quote\]/gm) ?? []).length;
+		const insights_created = (
+			text.match(
+				new RegExp(
+					`^\\s*-\\s*${this.escapeForRegex(this.INSIGHT_LINK_PREFIX)}\\s*\\[\\[.+?\\]\\]`,
+					"gm",
+				),
+			) ?? []
+		).length;
+		return { highlights_total, insights_created };
+	}
+
+	private escapeForRegex(s: string): string {
+		return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	}
 
 	// --- 中継ノートの生成または更新を行うメイン関数 ---
   private async syncToIntermediateNote(bookTitle: string, service: HighlightService, db: any) {
 		const sanitizedBookName = sanitize(bookTitle);
-		const folderPath = "Kobo-Inboxes";
+		const folderPath = this.intermediateFolder;
 		const fileName = normalizePath(`${folderPath}/${sanitizedBookName}.md`);
 		
 		if (!(await this.app.vault.adapter.exists(folderPath))) {
@@ -274,15 +402,15 @@ export class ExtractHighlightsModal extends Modal {
 			const summary = rawText.replace(/\r?\n/g, '').slice(0, 30);
 	
 			if (!existingContent.includes(`id: ${id}`)) {
-				let block = `\n---\n> [!quote]- ${summary}...\n${calloutText}\n> \n\n`;
+				let block = `\n---\n> [!quote]- ${summary}...\n> <!-- id: ${id} -->\n${calloutText}\n> \n\n`;
 				
 				// Kobo側でメモ（Annotation）があれば、考察欄の初期値として入れる
 				if (annotation) {
 					block += `📝: ${annotation}\n\n`;
 				}
 				
-				// 知見ノート化のための入力行
-				block += `- [ ] \n`;
+				// 知見ノート化のための入力行（メモ欄）
+				block += `- [ ] memo:: \n`;
 				
 				newHighlightsText += block;
 				addedCount++;
@@ -294,11 +422,13 @@ export class ExtractHighlightsModal extends Modal {
 			// 既存の内容の末尾に、新しいハイライトを合体させる
 			const updatedContent = existingContent.trimEnd() + "\n\n" + newHighlightsText.trim();
 			await this.app.vault.adapter.write(fileName, updatedContent);
+			await this.recomputeAndCacheStats(fileName);
 			new Notice(`${bookTitle}: ${addedCount}件追加完了`);
 		} else {
 			// 初回作成時のみ、中身がなくてもヘッダーだけ書く
 			if (!fileExists) {
 				await this.app.vault.adapter.write(fileName, existingContent);
+				await this.recomputeAndCacheStats(fileName);
 				new Notice(`${bookTitle}: 中継ノートを作成しました（新着なし）`);
 			} else {
 				new Notice(`${bookTitle}: すべて同期済みです`);
@@ -308,9 +438,14 @@ export class ExtractHighlightsModal extends Modal {
 
   // 中継ノートの冒頭部分（ボタンを含む）を作成
   private createNoteHeader(title: string): string {
+		const now = new Date().toISOString();
 		return `---
 title: "${title}"
-sync_date: ${new Date().toISOString()}
+sync_date: ${now}
+kobo_stats:
+  highlights_total: 0
+  insights_created: 0
+  updated_at: ${now}
 ---
 
 \`\`\`kobo-inboxer
@@ -574,7 +709,7 @@ sync_date: ${new Date().toISOString()}
         : bookmark.text.substring(0, 15).replace(/[\\/:*?"<>|]/g, "");
     
     // 重複を避けるためにタイムスタンプ等を付与しても良いですが、まずはシンプルに
-    const fullPath = normalizePath(`${this.settings.storageFolder}/${sanitize(fileName)}.md`);
+    const fullPath = normalizePath(`${this.intermediateFolder}/${sanitize(fileName)}.md`);
 
     // 2. フロントマターと本文の組み立て（理想の構造）
     const fileContent = `---
@@ -598,4 +733,18 @@ ${bookmark.annotation ? `\n${bookmark.annotation}\n` : ""}
         console.error("Failed to write file:", fullPath, e);
     }
 	}
+}
+
+
+
+// ===== Kobo Stats Display Helpers (FINAL) =====
+function readKoboStats(cache: any) {
+  const ks = cache?.frontmatter?.kobo_stats;
+  if (!ks) {
+    return { highlights_total: 0, insights_created: 0 };
+  }
+  return {
+    highlights_total: ks.highlights_total ?? 0,
+    insights_created: ks.insights_created ?? 0,
+  };
 }
