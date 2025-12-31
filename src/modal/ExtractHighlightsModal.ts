@@ -455,6 +455,7 @@ kobo_stats:
 `;
 }
 
+/*
 	private async renderHighlightSelector() {
     const { contentEl } = this;
     contentEl.empty();
@@ -578,6 +579,7 @@ kobo_stats:
     db.close();
 	}
 
+
 	private async renderHighlightSelector() {
     const { contentEl } = this;
     contentEl.empty();
@@ -700,6 +702,7 @@ kobo_stats:
 
     db.close();
 	}
+	*/
 
 	private async saveHighlightAsNote(bookTitle: string, bookmark: Bookmark, customTitle: string) {
     // 1. ファイル名の決定

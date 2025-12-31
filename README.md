@@ -1,123 +1,181 @@
-# Kobo Highlight Picker & Inboxer
+# Kobo Highlights Picker & Inboxer
 
-This plugin aims to make highlight import from Kobo devices easier.
+An Obsidian plugin to import Kobo highlights **selectively**, organize them into **intermediate inbox notes**, and gradually turn them into **insight notes** at your own pace.
 
-- [Kobo Highlight Picker & Inboxer](#kobo-highlight-picker--inboxer)
-    - [How to use](#how-to-use)
-    - [Templating](#templating)
-        - [Variables](#variables)
-        - [Template Syntax](#template-syntax)
-    - [Helping Screenshots](#helping-screenshots)
-    - [Contributing](#contributing)
+This plugin is built for people who want to *think with their highlights*, not simply dump them into Obsidian.
 
-## How to use
-
-Once installed, the steps to import your highlights directly into the vault are:
-
-1. Connect your Kobo device to PC using a proper USB cable
-2. Check if it has mounted automatically, or mount it manually (e.g. open the root folder of your Kobo using a file
-   manager)
-3. Open the import window using the plugin button
-4. Locate _KoboReader.sqlite_ in the _.kobo_ folder ( this folder is hidden, so if you don't see it you should enable
-   hidden files view from system configs )
-5. Extract
-
-## Templating
-
-The plugin uses [Eta.js](https://eta.js.org/) for templating. You can fully customize the output using Eta's template syntax. See the [Eta.js template syntax documentation](https://eta.js.org/docs/intro/template-syntax) for details.
-
-The default template is:
-
-```eta
----
-title: "<%= it.bookDetails.title %>"
-author: <%= it.bookDetails.author %>
-publisher: <%= it.bookDetails.publisher ?? '' %>
-dateLastRead: <%= it.bookDetails.dateLastRead?.toISOString() ?? '' %>
-readStatus: <%= it.bookDetails.readStatus ? it.ReadStatus[it.bookDetails.readStatus] : it.ReadStatus[it.ReadStatus.Unknown] %>
-percentRead: <%= it.bookDetails.percentRead ?? '' %>
-isbn: <%= it.bookDetails.isbn ?? '' %>
-series: <%= it.bookDetails.series ?? '' %>
-seriesNumber: <%= it.bookDetails.seriesNumber ?? '' %>
-timeSpentReading: <%= it.bookDetails.timeSpentReading ?? '' %>
 ---
 
-# <%= it.bookDetails.title %>
+## Overview
 
-## Description
+Most highlight importers focus on **bulk extraction**.
+This plugin focuses on **deliberate thinking**.
 
-<%= it.bookDetails.description ?? '' %>
+Instead of immediately turning every highlight into a permanent note, highlights are first collected into **intermediate notes**, where you can annotate, reflect, and decide what is worth turning into knowledge.
 
-## Highlights
+---
 
-<% it.chapters.forEach(([chapterName, highlights]) => { -%>
-## <%= chapterName.trim() %>
+## Features
 
-<% highlights.forEach((highlight) => { -%>
-<%= highlight.text %>
+### 📚 Selective Import from Kobo
 
-<% if (highlight.note) { -%>
-**Note:** <%= highlight.note %>
+* Import highlights from `KoboReader.sqlite`
+* Choose **which books** to import
+* Clearly see which books:
 
-<% } -%>
-<% if (highlight.dateCreated) { -%>
-*Created: <%= highlight.dateCreated.toISOString() %>*
+  * already have intermediate notes
+  * have not been imported yet
 
-<% } -%>
-<% }) -%>
-<% }) %>
+---
+
+### 🗂 Intermediate Notes (Inbox-style)
+
+* One intermediate note per book
+* Highlights are appended incrementally (no duplication)
+* Each highlight is stored as a structured block with a unique ID
+* Designed as a *thinking workspace*, not a final archive
+
+---
+
+### 📝 Memo-driven Workflow
+
+Each new highlight includes a memo placeholder:
+
+```md
+- [ ] memo::
 ```
 
-### Variables
+* This represents an *unprocessed thought*
+* Empty memos are ignored
+* A highlight with no memo is simply “not ready yet”
 
-The following variables are available in your template:
+---
 
-| Variable      | Type / Structure                     | Description                                                                                                                                                                                                                                                                                                                    |
-| ------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bookDetails` | Object                               | Book metadata: <br>`title`, `author`, `publisher`, `dateLastRead`, `readStatus`, `percentRead`, `isbn`, `series`, `seriesNumber`, `timeSpentReading`, `description`                                                                                                                                                            |
-| `chapters`    | Array of `[chapterName, highlights]` | Each `highlights` is an array of bookmarks for that chapter                                                                                                                                                                                                                                                                    |
-| `ReadStatus`  | Enum mapping                         | Maps read status values to their string labels                                                                                                                                                                                                                                                                                 |
-| `highlight`   | Object                               | Each highlight/bookmark:<br>- `bookmarkId`: Unique ID<br>- `text`: The raw highlight text<br>- `contentId`: Content identifier<br>- `note`: Optional note/annotation (if any)<br>- `dateCreated`: [Date](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date) when the highlight was created |
+### 💡 Insight Notes (Created on Demand)
 
-#### Example usage
+* When a memo contains text, it can be turned into an **insight note**
+* After creation:
 
-```eta
-<% it.chapters.forEach(([chapterName, highlights]) => { -%>
-## <%= chapterName %>
-<% highlights.forEach(h => { -%>
-<%= h.text %>
-<% if (h.note) { -%>
-**Note:** <%= h.note %>
-<% } -%>
-<% if (h.dateCreated) { -%>
-*Created: <%= h.dateCreated.toISOString() %>*
-<% } -%>
-<% }) -%>
-<% }) %>
+  * The `memo::` line is removed
+  * An `insight:: [[Note]]` link is added to the intermediate note
+* Empty memos never generate notes
+
+This prevents accidental note spam and keeps insight notes intentional.
+
+---
+
+### 📊 Automatic Progress Tracking
+
+Statistics are derived from the **note body itself** (source of truth):
+
+* Total highlights
+* Remaining memos
+* Created insight notes
+
+For performance, stats are cached in frontmatter:
+
+```yaml
+kobo_stats:
+  highlights_total: 42
+  insights_created: 17
 ```
 
-#### Date formatting examples
+---
 
-```eta
-<!-- YYYY-MM-DD format -->
-*Created: <%= h.dateCreated.getFullYear() %>-<%= String(h.dateCreated.getMonth() + 1).padStart(2, '0') %>-<%= String(h.dateCreated.getDate()).padStart(2, '0') %>*
+### ⚙️ Configurable Folders
 
-<!-- Localized date -->
-*Created: <%= h.dateCreated.toLocaleDateString() %>*
+From Settings, you can configure:
 
-<!-- Localized date and time -->
-*Created: <%= h.dateCreated.toLocaleString() %>*
+* Intermediate notes folder
+* Insight notes folder
+* Template for imported notes
+* Whether to import all books or only books with highlights
+* Optional saved path to `KoboReader.sqlite` (to avoid reselecting each time)
+
+---
+
+### 🧠 Philosophy-first Design
+
+* Notes are not created automatically
+* Nothing is forced
+* Knowledge is created only when *you* decide it is ready
+
+---
+
+## Typical Workflow
+
+1. **Select `KoboReader.sqlite`**
+
+   * Can be configured once in Settings
+   * Automatically reused later
+
+2. **Choose Books**
+
+   * See which books are already imported
+   * Select only what you want
+
+3. **Sync to Intermediate Notes**
+
+   * One note per book
+   * New highlights are appended safely
+
+4. **Add Memos**
+
+   * Write thoughts next to highlights
+   * Leave memos empty if you are not ready
+
+5. **Create Insight Notes**
+
+   * Only non-empty memos generate notes
+   * Insight links are tracked automatically
+
+---
+
+## Folder Structure Example
+
+```text
+Kobo-Inboxes/
+  ├─ Thinking, Fast and Slow.md
+  ├─ The Structure of Scientific Revolutions.md
+
+Kobo-Insights/
+  ├─ System 1 vs System 2.md
+  ├─ Paradigm Shifts.md
 ```
 
-For more advanced syntax, see the [Eta.js template syntax documentation](https://eta.js.org/docs/intro/template-syntax).
+---
 
-## Helping Screenshots
+## Why Intermediate Notes?
 
-![](./README_assets/step1.png)
-![](./README_assets/step2.png)
-![](./README_assets/step3.png)
-![](./README_assets/step4.png)
+This plugin intentionally separates:
 
-## Contributing
+* **Collection** (highlights)
+* **Thinking** (memos)
+* **Knowledge** (insight notes)
 
-Please feel free to test, send feedbacks using Issues and open Pull Requests to improve the process.
+Instead of creating hundreds of notes at once, you get a **reviewable inbox** that respects attention, time, and cognitive load.
+
+---
+
+## Acknowledgements
+
+This project was originally inspired by
+[obsidian-kobo-highlights-import](https://github.com/OGKevin/obsidian-kobo-highlights-import)
+by **OGKevin**.
+
+The original project provided a solid foundation for importing Kobo highlights into Obsidian.
+This plugin started as a cloned codebase and has since been **heavily redesigned and extended** with a different workflow, data model, and philosophy focused on incremental thinking and deliberate note creation.
+
+---
+
+## Status
+
+* Actively developed
+* Breaking changes may occur
+* Feedback and ideas are welcome
+
+---
+
+## License
+
+MIT License

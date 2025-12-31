@@ -15,8 +15,6 @@ export interface KoboHighlightsPickerAndInboxerSettings {
   insightFolder: string;
 
   sortByChapterProgress: boolean;
-  templatePath: string;
-  importAllBooks: boolean;
 }
 
 export const DEFAULT_SETTINGS: KoboHighlightsPickerAndInboxerSettings = {
@@ -26,8 +24,6 @@ export const DEFAULT_SETTINGS: KoboHighlightsPickerAndInboxerSettings = {
   insightFolder: "Kobo-Insights",
 
   sortByChapterProgress: false,
-  templatePath: "",
-  importAllBooks: false,
 };
 
 export class KoboHighlightsPickerAndInboxerSettingsTab extends PluginSettingTab {
@@ -86,21 +82,6 @@ export class KoboHighlightsPickerAndInboxerSettingsTab extends PluginSettingTab 
       });
   }
 
-  add_template_path(): void {
-    new Setting(this.containerEl)
-      .setName("Template Path")
-      .setDesc("Which template to use for extracted highlights")
-      .addSearch((cb) => {
-        new FileSuggestor(this.app, cb.inputEl);
-        cb.setPlaceholder("Example: folder1/template")
-          .setValue(this.plugin.settings.templatePath)
-          .onChange(async (newTemplatePath) => {
-            this.plugin.settings.templatePath = (newTemplatePath ?? "").trim();
-            await this.plugin.saveSettings();
-          });
-      });
-  }
-
   add_sort_by_chapter_progress(): void {
     const desc = document.createDocumentFragment();
     desc.append(
@@ -113,25 +94,6 @@ export class KoboHighlightsPickerAndInboxerSettingsTab extends PluginSettingTab 
       .addToggle((cb) => {
         cb.setValue(this.plugin.settings.sortByChapterProgress).onChange(async (toggle) => {
           this.plugin.settings.sortByChapterProgress = toggle;
-          await this.plugin.saveSettings();
-        });
-      });
-  }
-
-  add_import_all_books(): void {
-    const desc = document.createDocumentFragment();
-    desc.append(
-      "When enabled, import information for all books from your Kobo device, not just books with highlights.",
-      desc.createEl("br"),
-      "This will include reading progress, status, and other metadata for every book."
-    );
-
-    new Setting(this.containerEl)
-      .setName("Import all books")
-      .setDesc(desc)
-      .addToggle((cb) => {
-        cb.setValue(this.plugin.settings.importAllBooks).onChange(async (toggle) => {
-          this.plugin.settings.importAllBooks = toggle;
           await this.plugin.saveSettings();
         });
       });
