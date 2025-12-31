@@ -271,9 +271,10 @@ export class ExtractHighlightsModal extends Modal {
 			// コールアウト形式に変換
 			const calloutText = rawText.trim().split('\n').map(line => `> ${line}`).join('\n');
 			const annotation = row[2] as string || "";
+			const summary = rawText.replace(/\r?\n/g, '').slice(0, 30);
 	
 			if (!existingContent.includes(`id: ${id}`)) {
-				let block = `\n---\n> [!quote]\n${calloutText}\n> \n\n`;
+				let block = `\n---\n> [!quote]- ${summary}...\n${calloutText}\n> \n\n`;
 				
 				// Kobo側でメモ（Annotation）があれば、考察欄の初期値として入れる
 				if (annotation) {
@@ -281,7 +282,7 @@ export class ExtractHighlightsModal extends Modal {
 				}
 				
 				// 知見ノート化のための入力行
-				block += `- [ ] _ \n`;
+				block += `- [ ] \n`;
 				
 				newHighlightsText += block;
 				addedCount++;
@@ -585,7 +586,7 @@ tags: [kobo-highlight]
 location: "${bookmark.chapterProgress}"
 ---
 
-> [!quote] ${bookmark.text}
+> [!quote]+ ${bookmark.text}
 ${bookmark.annotation ? `\n${bookmark.annotation}\n` : ""}
 — *出典: ${bookTitle}*
 `;
