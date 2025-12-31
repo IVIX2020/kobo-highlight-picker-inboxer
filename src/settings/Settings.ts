@@ -1,19 +1,10 @@
 import { App, PluginSettingTab, Setting, normalizePath } from "obsidian";
 import KoboHighlightsPickerAndInboxer from "src/main";
-import { FileSuggestor } from "./suggestors/FileSuggestor";
 import { FolderSuggestor } from "./suggestors/FolderSuggestor";
 
 export interface KoboHighlightsPickerAndInboxerSettings {
-  /**
-   * NEW: 中継ノート（Kobo-Inboxes 的なもの）の保存先
-   */
   intermediateFolder: string;
-
-  /**
-   * NEW: 知見ノート（Kobo-Insights 的なもの）の保存先
-   */
   insightFolder: string;
-
   sortByChapterProgress: boolean;
 }
 
@@ -37,17 +28,9 @@ export class KoboHighlightsPickerAndInboxerSettingsTab extends PluginSettingTab 
   display(): void {
     this.containerEl.empty();
     this.containerEl.createEl("h2", { text: this.plugin.manifest.name });
-
     this.add_intermediate_folder();
     this.add_insight_folder();
-
-    // 既存
-    this.add_template_path();
     this.add_sort_by_chapter_progress();
-    this.add_import_all_books();
-
-    // （任意）storageFolder は legacy なので UI から消す
-    // もし残したいなら add_destination_folder() を復活させて storageFolder を編集可能にしてもOK
   }
 
   add_intermediate_folder(): void {

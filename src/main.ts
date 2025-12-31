@@ -42,12 +42,6 @@ function sanitizeFileName(name: string): string {
 
 export default class KoboHighlightsImporter extends Plugin {
   settings!: KoboHighlightsPickerAndInboxerSettings;
-
-  // Intermediate notes created by the modal are stored here.
-  //private readonly INTERMEDIATE_FOLDER = this.settings.intermediateFolder;
-  // Insight notes created from checked memos are stored here.
-  //private readonly INSIGHT_FOLDER = this.settings.insightFolder;
-
   // Marker used in intermediate notes to record an extracted insight.
   // We count only these lines to compute "insights_created".
   private readonly INSIGHT_LINK_PREFIX = "insight::";
@@ -124,10 +118,8 @@ export default class KoboHighlightsImporter extends Plugin {
       if (line.includes("- [x]")) {
         // チェックボックスより右側のテキストをすべて取得
         let insightTitle = line.replace(/^\s*-\s*\[x\]\s*/, "").trim();
-        
         // もし先頭に "_" が残っていたら、それとその後のスペースを掃除する
         insightTitle = insightTitle.replace(/^_\s*/, "").trim();
-
         // 何かしら文字が書かれていれば採用（"_" だけの場合は無視される）
         if (insightTitle.length > 0) {
           targets.push({ index: i, title: insightTitle });
