@@ -2,8 +2,8 @@ import { addIcon, Notice, normalizePath, Plugin, TFile } from "obsidian";
 import { ExtractHighlightsModal } from "./modal/ExtractHighlightsModal";
 import {
   DEFAULT_SETTINGS,
-  KoboHighlightsPickerAndInboxerSettings,
-  KoboHighlightsPickerAndInboxerSettingsTab,
+  KoboHighlightPickerAndInboxerSettings,
+  KoboHighlightPickerAndInboxerSettingsTab,
 } from "./settings/Settings";
 
 const INBOX_ICON_PATH = `
@@ -41,7 +41,7 @@ function sanitizeFileName(name: string): string {
 }
 
 export default class KoboHighlightsImporter extends Plugin {
-  settings!: KoboHighlightsPickerAndInboxerSettings;
+  settings!: KoboHighlightPickerAndInboxerSettings;
   // Marker used in intermediate notes to record an extracted insight.
   // We count only these lines to compute "insights_created".
   private readonly INSIGHT_LINK_PREFIX = "insight::";
@@ -76,7 +76,7 @@ export default class KoboHighlightsImporter extends Plugin {
         if (activeFile && activeFile.extension === "md") {
           await this.extractHighlightsToNotes(activeFile);
         } else {
-          new Notice("アクティブなMarkdownファイルが見つかりません");
+          new Notice("There's no active Markdown file.");
         }
       },
     });
@@ -84,19 +84,19 @@ export default class KoboHighlightsImporter extends Plugin {
     // 4. コードブロックプロセッサ
     this.registerMarkdownCodeBlockProcessor("kobo-inboxer", (source, el, ctx) => {
       const btn = el.createEl("button", { 
-        text: "⚡️ 知見ノート化を実行",
+        text: "⚡️ Generate Insights from Memos",
         cls: "kobo-inbox-btn" 
       });
     
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", () => {
         const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath);
         if (file instanceof TFile) {
-          await this.extractHighlightsToNotes(file);
+          void this.extractHighlightsToNotes(file).catch(console.error);
         }
       });
     });
 
-    this.addSettingTab(new KoboHighlightsPickerAndInboxerSettingsTab(this.app, this));
+    this.addSettingTab(new KoboHighlightPickerAndInboxerSettingsTab(this.app, this));
   }
 
   async loadSettings() {
@@ -128,7 +128,7 @@ export default class KoboHighlightsImporter extends Plugin {
     }
 
     if (targets.length === 0) {
-      new Notice("抽出対象（チェック済みでタイトルあり）が見つかりません。");
+      new Notice("There's no memos you can extract.");
       return;
     }
 
@@ -161,7 +161,7 @@ export default class KoboHighlightsImporter extends Plugin {
 
     await this.app.vault.modify(file, newLines.join("\n"));
     await this.updateIntermediateNoteStats(file);
-    new Notice(createdCount + " 件の知見ノートを作成しました");
+    new Notice(createdCount + " insight notes created.");
   }
 
   /**
@@ -279,7 +279,7 @@ ${quoteBody}
       await this.app.vault.create(path, fileContent);
       return path;
     } catch (e) {
-      new Notice(`エラー: 同名のファイルが既に存在する可能性があります (${title})`);
+      new Notice(`error: a file with same name already exists. (${title})`);
       return path; // still return path so the link can be added (user might already have it)
     }
   }

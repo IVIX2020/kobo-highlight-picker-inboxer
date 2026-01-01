@@ -1,11 +1,11 @@
-import { App, Modal, normalizePath, Notice, TFile } from "obsidian";
+import { App, Modal, normalizePath, Notice, TFile, Setting } from "obsidian";
 import { sanitize } from "sanitize-filename-ts";
 import SqlJs from "sql.js";
 import { binary } from "src/binaries/sql-wasm";
 import { HighlightService } from "src/database/Highlight";
 import { Bookmark } from "src/database/interfaces";
 import { Repository } from "src/database/repository";
-import { KoboHighlightsPickerAndInboxerSettings } from "src/settings/Settings";
+import { KoboHighlightPickerAndInboxerSettings } from "src/settings/Settings";
 import { applyTemplateTransformations } from "src/template/template";
 import { getTemplateContents } from "src/template/templateContents";
 
@@ -13,7 +13,7 @@ export class ExtractHighlightsModal extends Modal {
 	goButtonEl!: HTMLButtonElement;
 	inputFileEl!: HTMLInputElement;
 
-	settings: KoboHighlightsPickerAndInboxerSettings;
+	settings: KoboHighlightPickerAndInboxerSettings;
 
 	fileBuffer: ArrayBuffer | null | undefined;
 
@@ -28,7 +28,7 @@ export class ExtractHighlightsModal extends Modal {
   // Marker line used in intermediate notes to record an extracted insight.
   private readonly INSIGHT_LINK_PREFIX = "insight::";
 
-	constructor(app: App, settings: KoboHighlightsPickerAndInboxerSettings) {
+	constructor(app: App, settings: KoboHighlightPickerAndInboxerSettings) {
 		super(app);
 		this.settings = settings;
 		this.nrOfBooksExtracted = 0;
@@ -107,7 +107,7 @@ export class ExtractHighlightsModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty(); // 初期化
 	
-		contentEl.createEl("h2", { text: "Kobo Book Selector" });
+		new Setting(contentEl).setName("Kobo book selector").setHeading();
 	
 		// 1. ファイル選択エリア
 		const fileInputContainer = contentEl.createDiv();
@@ -121,7 +121,7 @@ export class ExtractHighlightsModal extends Modal {
 		// 3. 実行ボタンエリア（最初は非表示または無効）
 		const buttonContainer = contentEl.createDiv({ cls: "kobo-button-container" });
 		this.goButtonEl = buttonContainer.createEl("button", {
-			text: "Next: Select Highlights",
+			text: "Next: Select highlights",
 			cls: "mod-cta" // Obsidian標準の目立つボタン色
 		});
 		this.goButtonEl.disabled = true;
@@ -132,50 +132,45 @@ export class ExtractHighlightsModal extends Modal {
 			if (!file) return;
 	
 			const reader = new FileReader();
-			reader.onload = async () => {
+			reader.onload = () => {
 				this.fileBuffer = reader.result as ArrayBuffer;
-				// DBをスキャンしてリストを更新するメソッド（次で作る）を呼ぶ
-				await this.refreshBookList();
+				void this.refreshBookList().catch(console.error);
 			};
 			reader.readAsArrayBuffer(file);
 		});
 
-		this.goButtonEl.addEventListener("click", async () => {
-      if (this.selectedBooks.size === 0) return;
-      
-      const SQLEngine = await SqlJs({ wasmBinary: binary.buffer });
-      const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer!));
-      const service = new HighlightService(new Repository(db));
-
-      new Notice("Syncing to intermediate notes...");
-
-      for (const bookTitle of Array.from(this.selectedBooks)) {
-        await this.syncToIntermediateNote(bookTitle, service, db);
-      }
-
-      db.close();
-      this.close();
-    });
+		this.goButtonEl.addEventListener("click", () => {
+			void (async () => {
+				if (this.selectedBooks.size === 0) return;
+		
+				const SQLEngine = await SqlJs({ wasmBinary: binary.buffer });
+				const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer!));
+				const service = new HighlightService(new Repository(db));
+		
+				new Notice("Syncing to intermediate notes...");
+		
+				for (const bookTitle of Array.from(this.selectedBooks)) {
+					await this.syncToIntermediateNote(bookTitle, service, db);
+				}
+		
+				db.close();
+				this.close();
+			})().catch(console.error);
+		});		
 	}
 
-	// ★ 新しく追加：次のステップの画面を描画するメソッド
-  private async renderHighlightSelector() {
-    const { contentEl } = this;
-    contentEl.empty(); // 前の画面（書籍選択）を消す
-
-    contentEl.createEl("h2", { text: "Step 2: Select Highlights & Name Titles" });
-    
-    const scrollArea = contentEl.createDiv({ cls: "kobo-highlight-scroll-area" });
-    scrollArea.style.maxHeight = "400px";
-    scrollArea.style.overflowY = "auto";
-    scrollArea.style.border = "1px solid var(--background-modifier-border)";
-    scrollArea.style.padding = "10px";
-
-    scrollArea.createEl("p", { text: "Loading highlights for selected books..." });
-
-    // ここに選択した本のハイライトを抽出して並べるロジックを書いていきます
-    // 次のステップでここを作り込みます
-  }
+	private renderHighlightSelector() {
+		const { contentEl } = this;
+		contentEl.empty();
+	
+		new Setting(contentEl)
+			.setName("Step 2: Select highlights and name titles")
+			.setHeading();
+	
+		const scrollArea = contentEl.createDiv({ cls: "kobo-highlight-scroll-area" });
+		scrollArea.createEl("p", { text: "Loading highlights for selected books..." });
+	}
+	
 
 	onClose() {
 		const { contentEl } = this;
@@ -186,7 +181,10 @@ export class ExtractHighlightsModal extends Modal {
 		if (!this.fileBuffer) return;
 
 		this.bookListContainerEl.empty();
-		this.bookListContainerEl.createEl("h3", { text: "Select Books to Import" });
+		new Setting(this.bookListContainerEl)
+			.setName("Select books to import")
+			.setHeading();
+
 
 		const SQLEngine = await SqlJs({ wasmBinary: binary.buffer });
 		const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer));
@@ -226,34 +224,34 @@ export class ExtractHighlightsModal extends Modal {
 
 		// UI: 便利ボタン
 		const actionRow = this.bookListContainerEl.createDiv({ cls: "kobo-book-actions" });
-		actionRow.style.display = "flex";
-		actionRow.style.gap = "8px";
-		actionRow.style.margin = "10px 0";
 
-		const selectNewBtn = actionRow.createEl("button", { text: "Select all NEW" });
+		const selectNewBtn = actionRow.createEl("button", { text: "Select all new" });
 		selectNewBtn.addEventListener("click", () => {
 			this.selectedBooks = new Set(newOnes);
 			this.goButtonEl.disabled = this.selectedBooks.size === 0;
-			this.refreshBookList();
+			void this.refreshBookList().catch(console.error);
 		});
 
-		const selectAllBtn = actionRow.createEl("button", { text: "Select All" });
+		const selectAllBtn = actionRow.createEl("button", { text: "Select all" });
 		selectAllBtn.addEventListener("click", () => {
 			this.selectedBooks = new Set(bookTitles);
 			this.goButtonEl.disabled = this.selectedBooks.size === 0;
-			this.refreshBookList();
+			void this.refreshBookList().catch(console.error);
 		});
 
 		const clearBtn = actionRow.createEl("button", { text: "Clear selection" });
 		clearBtn.addEventListener("click", () => {
 			this.selectedBooks.clear();
 			this.goButtonEl.disabled = true;
-			this.refreshBookList();
+			void this.refreshBookList().catch(console.error);
 		});
 
 		const renderSection = (title: string, items: string[], badgeText: string) => {
 			const section = this.bookListContainerEl.createDiv({ cls: "kobo-book-section" });
-			section.createEl("h4", { text: `${title} (${items.length})` });
+			section.createDiv({
+				cls: "kobo-section-title",
+				text: `${title} (${items.length})`,
+			});
 
 			items.forEach((bookTitle) => {
 				const sanitizedBookName = sanitize(bookTitle);
@@ -264,21 +262,16 @@ export class ExtractHighlightsModal extends Modal {
 					: badgeText;
 
 				const bookRow = section.createDiv({ cls: "kobo-book-row" });
-				bookRow.style.display = "flex";
-				bookRow.style.alignItems = "center";
-				bookRow.style.margin = "5px 0";
 
 				const checkbox = bookRow.createEl("input", { type: "checkbox" });
 				checkbox.checked = this.selectedBooks.has(bookTitle);
 
-				const label = bookRow.createEl("label", { text: bookTitle });
-				label.style.marginLeft = "10px";
-				label.style.flexGrow = "1";
+				const label = bookRow.createEl("label", { text: bookTitle, cls: "kobo-book-label" });
 
-				const badge = bookRow.createEl("span", { text: badgeTextWithStats });
-				badge.style.fontSize = "0.75em";
-				badge.style.opacity = "0.75";
-				badge.style.marginLeft = "8px";
+				const badge = bookRow.createEl("span", {
+					text: badgeTextWithStats,
+					cls: "kobo-book-badge",
+				});
 
 				checkbox.addEventListener("change", () => {
 					if (checkbox.checked) {
@@ -291,11 +284,11 @@ export class ExtractHighlightsModal extends Modal {
 			});
 		};
 
-		renderSection("NEW (no intermediate note yet)", newOnes, "NEW");
-		renderSection("ALREADY HAS intermediate note", already, "SYNCED");
+		renderSection("New (no intermediate note yet)", newOnes, "New");
+		renderSection("Already has intermediate note", already, "Synced");
 
-		new Notice(`${bookTitles.length} books with highlights found. NEW:${newOnes.length} / SYNCED:${already.length}`);
-		db.close(); // メモリ解放
+		new Notice(`${bookTitles.length} books with highlights found. New:${newOnes.length} / Synced:${already.length}`);
+		db.close(); 
 	}
 
 	/**
@@ -309,11 +302,14 @@ export class ExtractHighlightsModal extends Modal {
 		const f = this.app.vault.getAbstractFileByPath(filePath);
 		if (!(f instanceof TFile)) return null;
 		const cache = this.app.metadataCache.getFileCache(f);
-		const fm: any = cache?.frontmatter;
-		const ks: any = fm?.kobo_stats;
-		if (!ks) return null;
-		const h = Number(ks.highlights_total);
-		const i = Number(ks.insights_created);
+		const fm = cache?.frontmatter as unknown;
+		if (typeof fm !== "object" || fm === null || !("kobo_stats" in fm)) return null;
+		
+		const ks = (fm as { kobo_stats: unknown }).kobo_stats;
+		if (typeof ks !== "object" || ks === null) return null;
+		
+		const h = Number((ks as Record<string, unknown>)["highlights_total"]);
+		const i = Number((ks as Record<string, unknown>)["insights_created"]);
 		if ([h, i].some((n) => Number.isNaN(n))) return null;
 		return { highlights_total: h, insights_created: i };
 	}
@@ -356,84 +352,107 @@ export class ExtractHighlightsModal extends Modal {
 	}
 
 	// --- 中継ノートの生成または更新を行うメイン関数 ---
-  private async syncToIntermediateNote(bookTitle: string, service: HighlightService, db: any) {
+	private async syncToIntermediateNote(
+		bookTitle: string,
+		service: HighlightService,
+		db: unknown
+	) {
+		// db: unknown → 使う直前で安全に扱う
+		const sqlDb = db as { exec: (q: string) => unknown };
+	
 		const sanitizedBookName = sanitize(bookTitle);
 		const folderPath = this.intermediateFolder;
 		const fileName = normalizePath(`${folderPath}/${sanitizedBookName}.md`);
-		
+	
 		if (!(await this.app.vault.adapter.exists(folderPath))) {
 			await this.app.vault.createFolder(folderPath);
 		}
 	
+		const escapedTitle = bookTitle.replace(/'/g, "''");
 		const highlightQuery = `
 			SELECT b.BookmarkID, b.Text, b.Annotation
 			FROM bookmark b
 			INNER JOIN content c ON b.VolumeID = c.ContentID
-			WHERE c.Title = '${bookTitle.replace(/'/g, "''")}'
-			AND b.Text IS NOT NULL
+			WHERE c.Title = '${escapedTitle}'
+				AND b.Text IS NOT NULL
 		`;
-		
-		const res = db.exec(highlightQuery);
-		if (!res || res.length === 0 || !res[0].values) {
-			console.log(`No highlights found for ${bookTitle}`);
+	
+		const execResult = sqlDb.exec(highlightQuery);
+	
+		// sql.js の exec 結果を最低限でガード（any禁止なので unknown → narrowing）
+		const res = Array.isArray(execResult) ? execResult : null;
+		const first = res?.[0] as unknown;
+	
+		const values =
+			typeof first === "object" &&
+			first !== null &&
+			"values" in first &&
+			Array.isArray((first as { values: unknown }).values)
+				? ((first as { values: unknown[] }).values as unknown[])
+				: null;
+	
+		if (!values || values.length === 0) {
+			console.debug(`No highlights found for ${bookTitle}`);
 			return;
 		}
 	
-		// 1. 既存ファイルの内容を取得。なければヘッダーのみ作成
-		let existingContent = "";
+		// 既存ファイル読み込み
 		const fileExists = await this.app.vault.adapter.exists(fileName);
-		if (fileExists) {
-			existingContent = await this.app.vault.adapter.read(fileName);
-		} else {
-			existingContent = this.createNoteHeader(bookTitle);
-		}
+		const existingContent = fileExists
+			? await this.app.vault.adapter.read(fileName)
+			: this.createNoteHeader(bookTitle);
 	
-		// 2. 新規分だけを組み立てる
 		let newHighlightsText = "";
 		let addedCount = 0;
 	
-		for (const row of res[0].values) {
-			const id = row[0] as string;
-			const rawText = row[1] as string;
-			// コールアウト形式に変換
-			const calloutText = rawText.trim().split('\n').map(line => `> ${line}`).join('\n');
-			const annotation = row[2] as string || "";
-			const summary = rawText.replace(/\r?\n/g, '').slice(0, 30);
+		for (const row of values) {
+			if (!Array.isArray(row)) continue;
+	
+			const id = String(row[0] ?? "");
+			const rawText = String(row[1] ?? "");
+			const annotation = String(row[2] ?? "");
+	
+			const calloutText = rawText
+				.trim()
+				.split("\n")
+				.map((line) => `> ${line}`)
+				.join("\n");
+	
+			const summary = rawText.replace(/\r?\n/g, "").slice(0, 30);
 	
 			if (!existingContent.includes(`id: ${id}`)) {
-				let block = `\n---\n> [!quote]- ${summary}...\n> <!-- id: ${id} -->\n${calloutText}\n> \n\n`;
-				
-				// Kobo側でメモ（Annotation）があれば、考察欄の初期値として入れる
-				if (annotation) {
-					block += `📝: ${annotation}\n\n`;
-				}
-				
-				// 知見ノート化のための入力行（メモ欄）
+				let block =
+					`\n---\n` +
+					`> [!quote]- ${summary}...\n` +
+					`> <!-- id: ${id} -->\n` +
+					`${calloutText}\n` +
+					`> \n\n`;
+	
+				if (annotation) block += `📝: ${annotation}\n\n`;
 				block += `- [ ] memo:: \n`;
-				
+	
 				newHighlightsText += block;
 				addedCount++;
 			}
 		}
 	
-		// 3. 書き込み処理
 		if (addedCount > 0) {
-			// 既存の内容の末尾に、新しいハイライトを合体させる
-			const updatedContent = existingContent.trimEnd() + "\n\n" + newHighlightsText.trim();
+			const updatedContent =
+				existingContent.trimEnd() + "\n\n" + newHighlightsText.trim();
 			await this.app.vault.adapter.write(fileName, updatedContent);
 			await this.recomputeAndCacheStats(fileName);
 			new Notice(`${bookTitle}: ${addedCount}件追加完了`);
-		} else {
-			// 初回作成時のみ、中身がなくてもヘッダーだけ書く
-			if (!fileExists) {
-				await this.app.vault.adapter.write(fileName, existingContent);
-				await this.recomputeAndCacheStats(fileName);
-				new Notice(`${bookTitle}: 中継ノートを作成しました（新着なし）`);
-			} else {
-				new Notice(`${bookTitle}: すべて同期済みです`);
-			}
+			return;
 		}
-	}
+	
+		if (!fileExists) {
+			await this.app.vault.adapter.write(fileName, existingContent);
+			await this.recomputeAndCacheStats(fileName);
+			new Notice(`${bookTitle}: 中継ノートを作成しました（新着なし）`);
+		} else {
+			new Notice(`${bookTitle}: すべて同期済みです`);
+		}
+	}	
 
   // 中継ノートの冒頭部分（ボタンを含む）を作成
   private createNoteHeader(title: string): string {
@@ -485,18 +504,4 @@ ${bookmark.annotation ? `\n${bookmark.annotation}\n` : ""}
         console.error("Failed to write file:", fullPath, e);
     }
 	}
-}
-
-
-
-// ===== Kobo Stats Display Helpers (FINAL) =====
-function readKoboStats(cache: any) {
-  const ks = cache?.frontmatter?.kobo_stats;
-  if (!ks) {
-    return { highlights_total: 0, insights_created: 0 };
-  }
-  return {
-    highlights_total: ks.highlights_total ?? 0,
-    insights_created: ks.insights_created ?? 0,
-  };
 }

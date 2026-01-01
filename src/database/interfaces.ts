@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 export interface Bookmark {
 	bookmarkId: string;
 	text: string;

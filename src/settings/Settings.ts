@@ -1,84 +1,91 @@
 import { App, PluginSettingTab, Setting, normalizePath } from "obsidian";
-import KoboHighlightsPickerAndInboxer from "src/main";
-import { FolderSuggestor } from "./suggestors/FolderSuggestor";
+import KoboHighlightPickerAndInboxer from "src/main";
+import { FolderSuggest } from "./suggestors/FolderSuggest";
 
-export interface KoboHighlightsPickerAndInboxerSettings {
+export interface KoboHighlightPickerAndInboxerSettings {
   intermediateFolder: string;
   insightFolder: string;
   sortByChapterProgress: boolean;
 }
 
-export const DEFAULT_SETTINGS: KoboHighlightsPickerAndInboxerSettings = {
-
-  // NEW defaults
+export const DEFAULT_SETTINGS: KoboHighlightPickerAndInboxerSettings = {
   intermediateFolder: "Kobo-Inboxes",
   insightFolder: "Kobo-Insights",
-
   sortByChapterProgress: false,
 };
 
-export class KoboHighlightsPickerAndInboxerSettingsTab extends PluginSettingTab {
-  constructor(
-    public app: App,
-    private plugin: KoboHighlightsPickerAndInboxer
-  ) {
+export class KoboHighlightPickerAndInboxerSettingsTab extends PluginSettingTab {
+  constructor(public app: App, private plugin: KoboHighlightPickerAndInboxer) {
     super(app, plugin);
   }
 
   display(): void {
     this.containerEl.empty();
-    this.containerEl.createEl("h2", { text: this.plugin.manifest.name });
-    this.add_intermediate_folder();
-    this.add_insight_folder();
-    this.add_sort_by_chapter_progress();
+
+    new Setting(this.containerEl).setName(this.plugin.manifest.name).setHeading();
+
+    this.addIntermediateFolder();
+    this.addInsightFolder();
+    this.addSortByChapterProgress();
   }
 
-  add_intermediate_folder(): void {
+  private addIntermediateFolder(): void {
     new Setting(this.containerEl)
       .setName("Intermediate notes folder")
-      .setDesc("Where to save intermediate (inbox) notes. Example: Kobo-Inboxes or Reading/Inbox")
+      .setDesc("Where to save intermediate (inbox) notes. Example: Kobo-Inboxes or Reading/Inbox.")
       .addSearch((cb) => {
-        new FolderSuggestor(this.app, cb.inputEl);
+        new FolderSuggest(this.app, cb.inputEl);
+
         cb.setPlaceholder("Example: Kobo-Inboxes")
           .setValue(this.plugin.settings.intermediateFolder)
-          .onChange(async (newFolder) => {
-            const v = normalizePath((newFolder ?? "").trim());
-            this.plugin.settings.intermediateFolder = v || "Kobo-Inboxes";
-            await this.plugin.saveSettings();
+          .onChange((newFolder) => {
+            void this.saveIntermediateFolder(newFolder).catch(console.error);
           });
       });
   }
 
-  add_insight_folder(): void {
+  private async saveIntermediateFolder(newFolder: string): Promise<void> {
+    const v = normalizePath((newFolder ?? "").trim());
+    this.plugin.settings.intermediateFolder = v || "Kobo-Inboxes";
+    await this.plugin.saveSettings();
+  }
+
+  private addInsightFolder(): void {
     new Setting(this.containerEl)
       .setName("Insight notes folder")
-      .setDesc("Where to save generated insight notes. Example: Kobo-Insights or Zettelkasten/Insights")
+      .setDesc("Where to save generated insight notes. Example: Kobo-Insights or Zettelkasten/Insights.")
       .addSearch((cb) => {
-        new FolderSuggestor(this.app, cb.inputEl);
+        new FolderSuggest(this.app, cb.inputEl);
+
         cb.setPlaceholder("Example: Kobo-Insights")
           .setValue(this.plugin.settings.insightFolder)
-          .onChange(async (newFolder) => {
-            const v = normalizePath((newFolder ?? "").trim());
-            this.plugin.settings.insightFolder = v || "Kobo-Insights";
-            await this.plugin.saveSettings();
+          .onChange((newFolder) => {
+            void this.saveInsightFolder(newFolder).catch(console.error);
           });
       });
   }
 
-  add_sort_by_chapter_progress(): void {
-    const desc = document.createDocumentFragment();
-    desc.append(
-      "Turn on to sort highlights by chapter progess. If turned off, highlights are sorted by creation date and time."
-    );
+  private async saveInsightFolder(newFolder: string): Promise<void> {
+    const v = normalizePath((newFolder ?? "").trim());
+    this.plugin.settings.insightFolder = v || "Kobo-Insights";
+    await this.plugin.saveSettings();
+  }
 
+  private addSortByChapterProgress(): void {
     new Setting(this.containerEl)
       .setName("Sort by chapter progress")
-      .setDesc(desc)
+      .setDesc(
+        "Turn on to sort highlights by chapter progress. If turned off, highlights are sorted by creation date and time."
+      )
       .addToggle((cb) => {
-        cb.setValue(this.plugin.settings.sortByChapterProgress).onChange(async (toggle) => {
-          this.plugin.settings.sortByChapterProgress = toggle;
-          await this.plugin.saveSettings();
+        cb.setValue(this.plugin.settings.sortByChapterProgress).onChange((toggle) => {
+          void this.saveSortByChapterProgress(toggle).catch(console.error);
         });
       });
+  }
+
+  private async saveSortByChapterProgress(toggle: boolean): Promise<void> {
+    this.plugin.settings.sortByChapterProgress = toggle;
+    await this.plugin.saveSettings();
   }
 }
