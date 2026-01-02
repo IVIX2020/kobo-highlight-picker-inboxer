@@ -36,7 +36,7 @@ export class ExtractHighlightsModal extends Modal {
 
 	private async fetchHighlights() {
 		if (!this.fileBuffer) {
-			throw new Error("No sqlite DB file selected...");
+			throw new Error("No SQlite database file selected.");
 		}
 
 		const SQLEngine = await SqlJs({
@@ -116,12 +116,12 @@ export class ExtractHighlightsModal extends Modal {
 	
 		// 2. 本の一覧を表示するエリア（最初は空）
 		this.bookListContainerEl = contentEl.createDiv({ cls: "kobo-book-list" });
-		this.bookListContainerEl.createEl("p", { text: "Please select KoboReader.sqlite to see books." });
+		this.bookListContainerEl.createEl("p", { text: "Select KoboReader.sqlite to view your books." });
 	
 		// 3. 実行ボタンエリア（最初は非表示または無効）
 		const buttonContainer = contentEl.createDiv({ cls: "kobo-button-container" });
 		this.goButtonEl = buttonContainer.createEl("button", {
-			text: "Next: Select highlights",
+			text: "Next: select highlights",
 			cls: "mod-cta" // Obsidian標準の目立つボタン色
 		});
 		this.goButtonEl.disabled = true;
@@ -147,7 +147,7 @@ export class ExtractHighlightsModal extends Modal {
 				const db = new SQLEngine.Database(new Uint8Array(this.fileBuffer!));
 				const service = new HighlightService(new Repository(db));
 		
-				new Notice("Syncing to intermediate notes...");
+				new Notice("Syncing intermediate notes...");
 		
 				for (const bookTitle of Array.from(this.selectedBooks)) {
 					await this.syncToIntermediateNote(bookTitle, service, db);
@@ -164,7 +164,7 @@ export class ExtractHighlightsModal extends Modal {
 		contentEl.empty();
 	
 		new Setting(contentEl)
-			.setName("Step 2: Select highlights and name titles")
+			.setName("Step 2: select highlights and name titles")
 			.setHeading();
 	
 		const scrollArea = contentEl.createDiv({ cls: "kobo-highlight-scroll-area" });
@@ -287,7 +287,7 @@ export class ExtractHighlightsModal extends Modal {
 		renderSection("New (no intermediate note yet)", newOnes, "New");
 		renderSection("Already has intermediate note", already, "Synced");
 
-		new Notice(`${bookTitles.length} books with highlights found. New:${newOnes.length} / Synced:${already.length}`);
+		new Notice(`${bookTitles.length} books with highlights found. new: ${newOnes.length} / synced: ${already.length}`);
 		db.close(); 
 	}
 
@@ -388,8 +388,9 @@ export class ExtractHighlightsModal extends Modal {
 			first !== null &&
 			"values" in first &&
 			Array.isArray((first as { values: unknown }).values)
-				? ((first as { values: unknown[] }).values as unknown[])
+				? (first as { values: unknown[] }).values
 				: null;
+
 	
 		if (!values || values.length === 0) {
 			console.debug(`No highlights found for ${bookTitle}`);

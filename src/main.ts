@@ -63,20 +63,20 @@ export default class KoboHighlightsImporter extends Plugin {
     // 2. インポートコマンド
     this.addCommand({
       id: "import-from-kobo-sqlite",
-      name: "Import from Kobo",
+      name: "Import from kobo",
       callback: () => new ExtractHighlightsModal(this.app, this.settings).open(),
     });
 
     // 3. 抽出コマンド（エラーの出にくいシンプルな callback 形式に変更）
     this.addCommand({
       id: "extract-highlights",
-      name: "Extract checked highlights to Inbox",
+      name: "Extract checked highlights to inbox",
       callback: async () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile && activeFile.extension === "md") {
           await this.extractHighlightsToNotes(activeFile);
         } else {
-          new Notice("There's no active Markdown file.");
+          new Notice("There is no active Markdown file.");
         }
       },
     });
@@ -84,7 +84,7 @@ export default class KoboHighlightsImporter extends Plugin {
     // 4. コードブロックプロセッサ
     this.registerMarkdownCodeBlockProcessor("kobo-inboxer", (source, el, ctx) => {
       const btn = el.createEl("button", { 
-        text: "⚡️ Generate Insights from Memos",
+        text: "Generate insights from memos ⚡️",
         cls: "kobo-inbox-btn" 
       });
     

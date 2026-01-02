@@ -31,7 +31,7 @@ export class HighlightService {
 
 		arr.forEach((x) => {
 			if (!x.content.bookTitle) {
-				throw new Error("bookTitle must be set");
+				throw new Error("BookTitle must be set");
 			}
 
 			const existingBook = m.get(x.content.bookTitle);
@@ -68,7 +68,7 @@ export class HighlightService {
 
 		return highlights.sort(function (a, b): number {
 			if (!a.content.bookTitle || !b.content.bookTitle) {
-				throw new Error("bookTitle must be set");
+				throw new Error("BookTitle must be set");
 			}
 
 			return (

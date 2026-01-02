@@ -8,263 +8,322 @@ export class Repository {
 		this.db = db;
 	}
 
-	async getAllBookmark(sortByChapterProgress?: boolean): Promise<Bookmark[]> {
-		let res;
-		if (sortByChapterProgress) {
-			res = this.db.exec(
-				`select BookmarkID, Text, ContentID, annotation, DateCreated, ChapterProgress from Bookmark where Text is not null order by ChapterProgress ASC, DateCreated ASC;`,
-			);
-		} else {
-			res = this.db.exec(
-				`select BookmarkID, Text, ContentID, annotation, DateCreated, ChapterProgress from Bookmark where Text is not null order by DateCreated ASC;`,
-			);
-		}
-		const bookmarks: Bookmark[] = [];
-
-		if (res[0].values == undefined) {
+	getAllBookmark(sortByChapterProgress?: boolean): Promise<Bookmark[]> {
+		const query = sortByChapterProgress
+			? `select BookmarkID, Text, ContentID, annotation, DateCreated, ChapterProgress
+				 from Bookmark
+				 where Text is not null
+				 order by ChapterProgress ASC, DateCreated ASC;`
+			: `select BookmarkID, Text, ContentID, annotation, DateCreated, ChapterProgress
+				 from Bookmark
+				 where Text is not null
+				 order by DateCreated ASC;`;
+	
+		const res = this.db.exec(query);
+		const values = res[0]?.values;
+	
+		if (!values?.length) {
 			console.warn(
-				"Bookmarks table returend no results, do you have any annotations created?",
+				"The bookmarks table returned no results. Do you have any highlights or annotations?"
 			);
-
-			return bookmarks;
+			return Promise.resolve([]);
 		}
-
-		res[0].values.forEach((row) => {
-			if (!(row[0] && row[1] && row[2] && row[4])) {
-				console.warn(
-					"Skipping bookmark with invalid values",
-					row[0],
-					row[1],
-					row[2],
-					row[3],
-					row[4],
-				);
-
-				return;
+	
+		const bookmarks: Bookmark[] = [];
+	
+		for (const row of values) {
+			const bookmarkId = row[0];
+			const text = row[1];
+			const contentId = row[2];
+			const dateCreated = row[4];
+	
+			// 必須カラムの最低限チェック
+			if (bookmarkId == null || text == null || contentId == null || dateCreated == null) {
+				console.warn("Skipping a bookmark with missing required values.");
+				continue;
 			}
-
+	
 			bookmarks.push({
-				bookmarkId: row[0].toString(),
-				text: row[1].toString().replace(/\s+/g, " ").trim(),
-				contentId: row[2].toString(),
-				note: row[3]?.toString(),
-				dateCreated: new Date(row[4].toString()),
+				bookmarkId: String(bookmarkId),
+				text: String(text).replace(/\s+/g, " ").trim(),
+				contentId: String(contentId),
+				note: row[3] == null ? undefined : String(row[3]),
+				dateCreated: new Date(String(dateCreated)),
 			});
-		});
-
-		return bookmarks;
+		}
+	
+		return Promise.resolve(bookmarks);
 	}
+	
 
-	async getTotalBookmark(): Promise<number> {
+	getTotalBookmark(): Promise<number> {
 		const res = this.db.exec(
 			`select count(*) from Bookmark where Text is not null;`,
 		);
+	
+		if (!res.length || !res[0].values?.length) {
+			return Promise.resolve(0);
+		}
+	
+		return Promise.resolve(Number(res[0].values[0][0]));
+	}	
 
-		return +res[0].values[0].toString();
-	}
-
-	async getBookmarkById(id: string): Promise<Bookmark | null> {
+	getBookmarkById(id: string): Promise<Bookmark | null> {
 		const statement = this.db.prepare(
-			`select BookmarkID, Text, ContentID, annotation, DateCreated from Bookmark where BookmarkID = $id;`,
-			{
-				$id: id,
-			},
+			`select BookmarkID, Text, ContentID, annotation, DateCreated
+			 from Bookmark
+			 where BookmarkID = $id;`,
+			{ $id: id },
 		);
-
-		if (!statement.step()) {
-			return null;
+	
+		try {
+			if (!statement.step()) {
+				return Promise.resolve(null);
+			}
+	
+			const row = statement.get();
+			const bookmarkId = row?.[0];
+			const text = row?.[1];
+			const contentId = row?.[2];
+			const dateCreated = row?.[4];
+	
+			if (bookmarkId == null || text == null || contentId == null || dateCreated == null) {
+				// 破損DBなどを想定して落とさずに扱う（審査的にも安全）
+				console.warn("A bookmark row had missing required values.");
+				return Promise.resolve(null);
+			}
+	
+			return Promise.resolve({
+				bookmarkId: String(bookmarkId),
+				text: String(text).replace(/\s+/g, " ").trim(),
+				contentId: String(contentId),
+				note: row?.[3] == null ? undefined : String(row[3]),
+				dateCreated: new Date(String(dateCreated)),
+			});
+		} finally {
+			statement.free();
 		}
-
-		const row = statement.get();
-
-		if (!(row[0] && row[1] && row[2] && row[4])) {
-			throw new Error("Bookmark column returned unexpected null");
-		}
-
-		return {
-			bookmarkId: row[0].toString(),
-			text: row[1].toString().replace(/\s+/g, " ").trim(),
-			contentId: row[2].toString(),
-			note: row[3]?.toString(),
-			dateCreated: new Date(row[4].toString()),
-		};
 	}
-
-	async getContentByContentId(contentId: string): Promise<Content | null> {
+	
+	getContentByContentId(contentId: string): Promise<Content | null> {
 		const statement = this.db.prepare(
-			`select 
-                Title, ContentID, ChapterIDBookmarked, BookTitle from content
-                where ContentID = $id;`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 where ContentID = $id;`,
 			{ $id: contentId },
 		);
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		if (contents.length > 1) {
-			throw new Error(
-				"filtering by contentId yielded more then 1 result",
-			);
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+	
+			if (contents.length > 1) {
+				throw new Error("Filtering by contentId yielded more than 1 result.");
+			}
+	
+			return Promise.resolve(contents[0] ?? null);
+		} finally {
+			statement.free();
 		}
-
-		return contents.pop() || null;
 	}
-
-	async getContentLikeContentId(contentId: string): Promise<Content | null> {
+	
+	getContentLikeContentId(contentId: string): Promise<Content | null> {
 		const statement = this.db.prepare(
-			`select 
-                Title, ContentID, ChapterIDBookmarked, BookTitle from content
-                where ContentID like $id;`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 where ContentID like $id;`,
 			{ $id: `%${contentId}%` },
 		);
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		if (contents.length > 1) {
-			console.warn(
-				`filtering by contentId yielded more then 1 result: ${contentId}, using the first result.`,
-			);
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+	
+			if (contents.length > 1) {
+				console.warn(
+					`Filtering by contentId yielded more than 1 result: ${contentId}. Using the first result.`,
+				);
+			}
+	
+			return Promise.resolve(contents[0] ?? null);
+		} finally {
+			statement.free();
 		}
-
-		return contents.shift() || null;
 	}
+	
 
-	async getFirstContentLikeContentIdWithBookmarkIdNotNull(contentId: string) {
+	getFirstContentLikeContentIdWithBookmarkIdNotNull(contentId: string): Promise<Content | null> {
 		const statement = this.db.prepare(
-			`select 
-                Title, ContentID, ChapterIDBookmarked, BookTitle from "content" 
-                where "ContentID" like $id and "ChapterIDBookmarked" not NULL limit 1`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 where ContentID like $id
+				 and ChapterIDBookmarked IS NOT NULL
+			 limit 1;`,
 			{ $id: `${contentId}%` },
 		);
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		return contents.pop() || null;
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+			return Promise.resolve(contents[0] ?? null);
+		} finally {
+			statement.free();
+		}
 	}
-
-	async getAllContent(limit = 100): Promise<Content[]> {
+	
+	getAllContent(limit = 100): Promise<Content[]> {
 		const statement = this.db.prepare(
-			`select Title, ContentID, ChapterIDBookmarked, BookTitle from content limit $limit`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 limit $limit;`,
 			{ $limit: limit },
 		);
-
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		return contents;
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+			return Promise.resolve(contents);
+		} finally {
+			statement.free();
+		}
 	}
-
-	async getAllContentByBookTitle(bookTitle: string): Promise<Content[]> {
+	
+	getAllContentByBookTitle(bookTitle: string): Promise<Content[]> {
 		const statement = this.db.prepare(
-			`select Title, ContentID, ChapterIDBookmarked, BookTitle  from "content" where BookTitle = $bookTitle`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 where BookTitle = $bookTitle;`,
 			{ $bookTitle: bookTitle },
 		);
-
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		return contents;
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+			return Promise.resolve(contents);
+		} finally {
+			statement.free();
+		}
 	}
+	
 
-	async getAllContentByBookTitleOrderedByContentId(
-		bookTitle: string,
-	): Promise<Content[]> {
+	getAllContentByBookTitleOrderedByContentId(bookTitle: string): Promise<Content[]> {
 		const statement = this.db.prepare(
-			`select Title, ContentID, ChapterIDBookmarked, BookTitle  from "content" where BookTitle = $bookTitle order by "ContentID"`,
+			`select Title, ContentID, ChapterIDBookmarked, BookTitle
+			 from content
+			 where BookTitle = $bookTitle
+			 order by ContentID;`,
 			{ $bookTitle: bookTitle },
 		);
-
-		const contents = this.parseContentStatement(statement);
-		statement.free();
-
-		return contents;
-	}
-
-	async getBookDetailsByBookTitle(
-		bookTitle: string,
-	): Promise<BookDetails | null> {
-		const statement = this.db.prepare(
-			`select Attribution, Description, Publisher, DateLastRead, ReadStatus, ___PercentRead, ISBN, Series, SeriesNumber, TimeSpentReading from content where Title = $title limit 1;`,
-			{
-				$title: bookTitle,
-			},
-		);
-
-		if (!statement.step()) {
-			return null;
+	
+		try {
+			const contents = this.parseContentStatement(statement);
+			return Promise.resolve(contents);
+		} finally {
+			statement.free();
 		}
-
-		const row = statement.get();
-
-		if (row.length == 0 || row[0] == null) {
-			console.debug(
-				"Used query: select Attribution, Description, Publisher, DateLastRead, ReadStatus, ___PercentRead, ISBN, Series, SeriesNumber, TimeSpentReading from content where Title = $title limit 2;",
-				{ $title: bookTitle, result: row },
-			);
-			console.warn("Could not find book details in database");
-
-			return null;
-		}
-
-		return {
-			title: bookTitle,
-			author: row[0].toString(),
-			description: row[1]?.toString(),
-			publisher: row[2]?.toString(),
-			dateLastRead: row[3] ? new Date(row[3].toString()) : undefined,
-			readStatus: row[4] ? +row[4].toString() : 0,
-			percentRead: row[5] ? +row[5].toString() : 0,
-			isbn: row[6]?.toString(),
-			series: row[7]?.toString(),
-			seriesNumber: row[8] ? +row[8].toString() : undefined,
-			timeSpentReading: row[9] ? +row[9].toString() : 0,
-		};
 	}
+	
 
-	async getAllBookDetails(): Promise<BookDetails[]> {
+	getBookDetailsByBookTitle(bookTitle: string): Promise<BookDetails | null> {
 		const statement = this.db.prepare(
-			`SELECT DISTINCT 
-                Title,
-                Attribution as Author,
-                Description,
-                Publisher,
-                DateLastRead,
-                ReadStatus,
-                ___PercentRead,
-                ISBN,
-                Series,
-                SeriesNumber,
-                TimeSpentReading
-            FROM content 
-            WHERE Title IS NOT NULL 
-            ORDER BY Title ASC;`,
+			`select Attribution, Description, Publisher, DateLastRead, ReadStatus, ___PercentRead, ISBN, Series, SeriesNumber, TimeSpentReading
+			 from content
+			 where Title = $title
+			 limit 1;`,
+			{ $title: bookTitle },
 		);
-
-		const books: BookDetails[] = [];
-
-		while (statement.step()) {
-			const row = statement.get();
-			if (row[0] == null || row[1] == null) {
-				continue; // Skip entries without title or author
+	
+		try {
+			if (!statement.step()) {
+				return Promise.resolve(null);
 			}
-
-			books.push({
-				title: row[0].toString(),
-				author: row[1].toString(),
-				description: row[2]?.toString(),
-				publisher: row[3]?.toString(),
-				dateLastRead: row[4] ? new Date(row[4].toString()) : undefined,
-				readStatus: row[5] ? +row[5].toString() : 0,
-				percentRead: row[6] ? +row[6].toString() : 0,
-				isbn: row[7]?.toString(),
-				series: row[8]?.toString(),
-				seriesNumber: row[9] ? +row[9].toString() : undefined,
-				timeSpentReading: row[10] ? +row[10].toString() : 0,
+	
+			const row = statement.get();
+			const author = row?.[0];
+	
+			if (author == null) {
+				console.warn("Could not find book details in the database.");
+				return Promise.resolve(null);
+			}
+	
+			const dateLastReadRaw = row?.[3];
+			const readStatusRaw = row?.[4];
+			const percentReadRaw = row?.[5];
+			const seriesNumberRaw = row?.[8];
+			const timeSpentReadingRaw = row?.[9];
+	
+			return Promise.resolve({
+				title: bookTitle,
+				author: String(author),
+				description: row?.[1] == null ? undefined : String(row[1]),
+				publisher: row?.[2] == null ? undefined : String(row[2]),
+				dateLastRead: dateLastReadRaw == null ? undefined : new Date(String(dateLastReadRaw)),
+				readStatus: readStatusRaw == null ? 0 : Number(readStatusRaw),
+				percentRead: percentReadRaw == null ? 0 : Number(percentReadRaw),
+				isbn: row?.[6] == null ? undefined : String(row[6]),
+				series: row?.[7] == null ? undefined : String(row[7]),
+				seriesNumber: seriesNumberRaw == null ? undefined : Number(seriesNumberRaw),
+				timeSpentReading: timeSpentReadingRaw == null ? 0 : Number(timeSpentReadingRaw),
 			});
+		} finally {
+			statement.free();
 		}
-
-		statement.free();
-		return books;
 	}
+	
+
+	getAllBookDetails(): Promise<BookDetails[]> {
+		const statement = this.db.prepare(
+			`select distinct
+				 Title,
+				 Attribution as Author,
+				 Description,
+				 Publisher,
+				 DateLastRead,
+				 ReadStatus,
+				 ___PercentRead,
+				 ISBN,
+				 Series,
+				 SeriesNumber,
+				 TimeSpentReading
+			 from content
+			 where Title is not null
+			 order by Title asc;`,
+		);
+	
+		try {
+			const books: BookDetails[] = [];
+	
+			while (statement.step()) {
+				const row = statement.get();
+				const title = row?.[0];
+				const author = row?.[1];
+	
+				if (title == null || author == null) {
+					continue;
+				}
+	
+				const dateLastReadRaw = row?.[4];
+				const readStatusRaw = row?.[5];
+				const percentReadRaw = row?.[6];
+				const seriesNumberRaw = row?.[9];
+				const timeSpentReadingRaw = row?.[10];
+	
+				books.push({
+					title: String(title),
+					author: String(author),
+					description: row?.[2] == null ? undefined : String(row[2]),
+					publisher: row?.[3] == null ? undefined : String(row[3]),
+					dateLastRead: dateLastReadRaw == null ? undefined : new Date(String(dateLastReadRaw)),
+					readStatus: readStatusRaw == null ? 0 : Number(readStatusRaw),
+					percentRead: percentReadRaw == null ? 0 : Number(percentReadRaw),
+					isbn: row?.[7] == null ? undefined : String(row[7]),
+					series: row?.[8] == null ? undefined : String(row[8]),
+					seriesNumber: seriesNumberRaw == null ? undefined : Number(seriesNumberRaw),
+					timeSpentReading: timeSpentReadingRaw == null ? 0 : Number(timeSpentReadingRaw),
+				});
+			}
+	
+			return Promise.resolve(books);
+		} finally {
+			statement.free();
+		}
+	}
+	
 
 	private parseContentStatement(statement: Statement): Content[] {
 		const contents: Content[] = [];
