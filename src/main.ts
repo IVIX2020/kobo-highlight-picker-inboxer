@@ -55,7 +55,7 @@ export default class KoboHighlightsImporter extends Plugin {
 		// const INSIGHT_FOLDER = this.settings.insightFolder;
 
     // 1. リボンアイコン（最初に登録）
-    const iconEl = this.addRibbonIcon("inbox", "Kobo Highlight Picker", () => {
+    const iconEl = this.addRibbonIcon("inbox", "Kobo highlight picker", () => {
       new ExtractHighlightsModal(this.app, this.settings).open();
     });
     iconEl.addClass("kobo-highlight-picker-inboxer-icon");

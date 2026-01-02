@@ -9,8 +9,8 @@ export interface KoboHighlightPickerAndInboxerSettings {
 }
 
 export const DEFAULT_SETTINGS: KoboHighlightPickerAndInboxerSettings = {
-  intermediateFolder: "Kobo-Inboxes",
-  insightFolder: "Kobo-Insights",
+  intermediateFolder: "kobo-inboxes",
+  insightFolder: "kobo-insights",
   sortByChapterProgress: false,
 };
 
@@ -32,11 +32,11 @@ export class KoboHighlightPickerAndInboxerSettingsTab extends PluginSettingTab {
   private addIntermediateFolder(): void {
     new Setting(this.containerEl)
       .setName("Intermediate notes folder")
-      .setDesc("Where to save intermediate (inbox) notes. Example: Kobo-Inboxes or Reading/Inbox.")
+      .setDesc("Where to save intermediate (inbox) notes. Example: kobo-inboxes or reading/inbox.")
       .addSearch((cb) => {
         new FolderSuggest(this.app, cb.inputEl);
 
-        cb.setPlaceholder("Example: Kobo-Inboxes")
+        cb.setPlaceholder("Example: kobo-inboxes")
           .setValue(this.plugin.settings.intermediateFolder)
           .onChange((newFolder) => {
             void this.saveIntermediateFolder(newFolder).catch(console.error);
@@ -46,18 +46,18 @@ export class KoboHighlightPickerAndInboxerSettingsTab extends PluginSettingTab {
 
   private async saveIntermediateFolder(newFolder: string): Promise<void> {
     const v = normalizePath((newFolder ?? "").trim());
-    this.plugin.settings.intermediateFolder = v || "Kobo-Inboxes";
+    this.plugin.settings.intermediateFolder = v || "kobo-inboxes";
     await this.plugin.saveSettings();
   }
 
   private addInsightFolder(): void {
     new Setting(this.containerEl)
       .setName("Insight notes folder")
-      .setDesc("Where to save generated insight notes. Example: Kobo-Insights or Zettelkasten/Insights.")
+      .setDesc("Where to save generated insight notes. Example: kobo-insights or zettelkasten/insights.")
       .addSearch((cb) => {
         new FolderSuggest(this.app, cb.inputEl);
 
-        cb.setPlaceholder("Example: Kobo-Insights")
+        cb.setPlaceholder("Example: kobo-insights")
           .setValue(this.plugin.settings.insightFolder)
           .onChange((newFolder) => {
             void this.saveInsightFolder(newFolder).catch(console.error);
